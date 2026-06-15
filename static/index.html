@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BagaTube — Скачивание и обрезка видео с YouTube</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Фоновые светящиеся сферы для глубины -->
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+
+    <div class="app-container">
+        <!-- Шапка -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fa-brands fa-youtube logo-icon"></i>
+                <span class="logo-text">Baga<span class="accent-text">Tube</span></span>
+            </div>
+            <p class="subtitle">Удобный сервис для скачивания и мгновенной обрезки видеороликов</p>
+        </header>
+
+        <!-- Главная карточка -->
+        <main class="main-card">
+            
+            <!-- Секция 1: Ввод URL -->
+            <section id="url-section" class="card-section">
+                <div class="input-group">
+                    <label for="video-url" class="input-label">Ссылка на видео YouTube</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-link input-icon"></i>
+                        <input type="url" id="video-url" placeholder="https://www.youtube.com/watch?v=..." required autocomplete="off">
+                    </div>
+                </div>
+                <button id="btn-analyze" class="btn btn-primary">
+                    <span class="btn-text">Анализировать</span>
+                    <i class="fa-solid fa-wand-magic-sparkles btn-icon"></i>
+                    <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                </button>
+                <div id="url-error" class="error-banner hidden">
+                    <i class="fa-solid fa-circle-exclamation error-icon"></i>
+                    <span class="error-text">Пожалуйста, введите корректный URL</span>
+                </div>
+            </section>
+
+            <!-- Секция 2: Детали видео и настройки (Изначально скрыта) -->
+            <section id="details-section" class="card-section hidden fade-in">
+                <div class="video-preview-card">
+                    <img id="video-thumbnail" src="" alt="Превью видео">
+                    <div class="video-info">
+                        <h2 id="video-title">Название видеоролика</h2>
+                        <p id="video-author" class="channel-name"><i class="fa-solid fa-circle-user icon-sm"></i> Автор</p>
+                        <p id="video-duration" class="duration-badge"><i class="fa-regular fa-clock icon-sm"></i> 00:00:00</p>
+                    </div>
+                </div>
+
+                <div class="form-divider"></div>
+
+                <!-- Параметры скачивания -->
+                <div class="download-options">
+                    <div class="input-group">
+                        <label for="format-select" class="input-label">Качество видео</label>
+                        <div class="select-wrapper">
+                            <i class="fa-solid fa-sliders input-icon"></i>
+                            <select id="format-select">
+                                <!-- Опции будут добавлены динамически -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Чекбокс обрезки -->
+                    <div class="checkbox-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="crop-toggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="checkbox-label">Обрезать видеофрагмент</span>
+                    </div>
+
+                    <!-- Времена обрезки (Изначально скрыто) -->
+                    <div id="crop-inputs" class="crop-grid hidden-height">
+                        <div class="input-group">
+                            <label for="crop-start" class="input-label">Начало</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-hourglass-start input-icon"></i>
+                                <input type="text" id="crop-start" placeholder="00:00:00" value="00:00:00">
+                            </div>
+                            <span class="input-hint">Формат: ЧЧ:ММ:СС или ММ:СС</span>
+                        </div>
+                        <div class="input-group">
+                            <label for="crop-end" class="input-label">Конец</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-hourglass-end input-icon"></i>
+                                <input type="text" id="crop-end" placeholder="00:00:10">
+                            </div>
+                            <span class="input-hint">Макс. длительность: 1 час</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-download" class="btn btn-accent btn-large">
+                    <span class="btn-text">Скачать файл</span>
+                    <i class="fa-solid fa-download btn-icon"></i>
+                </button>
+            </section>
+
+            <!-- Секция 3: Прогресс скачивания (Изначально скрыта) -->
+            <section id="progress-section" class="card-section hidden fade-in">
+                <div class="status-header">
+                    <h3 id="status-title">Подготовка к скачиванию...</h3>
+                    <div id="status-spinner" class="status-spinner-icon"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+                </div>
+
+                <!-- Прогресс-бар -->
+                <div class="progress-container">
+                    <div class="progress-bar-track">
+                        <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-stats">
+                        <span id="progress-percent">0%</span>
+                        <span id="download-speed">0.0 MiB/s</span>
+                        <span id="download-eta"><i class="fa-regular fa-hourglass icon-sm"></i> Осталось: --:--</span>
+                    </div>
+                </div>
+
+                <div id="status-msg" class="status-message">Инициализация ffmpeg и подключение к YouTube...</div>
+                
+                <button id="btn-cancel" class="btn btn-secondary btn-small">
+                    <span class="btn-text">Отмена</span>
+                    <i class="fa-solid fa-xmark btn-icon"></i>
+                </button>
+            </section>
+
+            <!-- Секция 4: Завершение скачивания (Изначально скрыта) -->
+            <section id="success-section" class="card-section hidden fade-in">
+                <div class="success-header">
+                    <div class="success-icon-wrapper">
+                        <i class="fa-solid fa-circle-check success-check-icon"></i>
+                    </div>
+                    <h3>Готово! Файл успешно обработан</h3>
+                    <p class="success-subtitle">Скачивание начнется автоматически. Если этого не произошло, нажмите кнопку ниже.</p>
+                </div>
+                
+                <div class="success-actions">
+                    <a id="btn-fetch-file" href="#" class="btn btn-accent btn-large" download>
+                        <span class="btn-text">Скачать напрямую</span>
+                        <i class="fa-solid fa-cloud-arrow-down btn-icon"></i>
+                    </a>
+                    <button id="btn-reset" class="btn btn-secondary">
+                        <span class="btn-text">Скачать другое видео</span>
+                        <i class="fa-solid fa-rotate-left btn-icon"></i>
+                    </button>
+                </div>
+            </section>
+
+        </main>
+        
+        <!-- Подвал -->
+        <footer class="app-footer">
+            <p>&copy; 2026 BagaTube. Разработано с использованием FastAPI & yt-dlp.</p>
+        </footer>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

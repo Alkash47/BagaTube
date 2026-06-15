@@ -1,0 +1,122 @@
+import asyncio
+import os
+import uuid
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request
+from fastapi.responses import StreamingResponse, FileResponse
+
+from app.schemas.downloader import AnalyzeRequest, AnalyzeResponse, DownloadRequest, DownloadResponse
+from app.services.task_manager import task_manager
+from app.services.yt_service import extract_video_info, download_video_task, get_browser_from_ua
+
+router = APIRouter(prefix="/api/downloader", tags=["downloader"])
+
+async def delete_file_after_delay(file_path: str, task_id: str):
+    # Задержка 10 секунд перед удалением файла, чтобы дать клиенту полностью скачать его
+    await asyncio.sleep(10)
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"[Cleanup] Успешно удален файл задачи {task_id}: {file_path}")
+    except Exception as e:
+        print(f"[Cleanup] Ошибка при удалении файла {file_path}: {e}")
+    finally:
+        await task_manager.delete_task(task_id)
+
+@router.post("/analyze", response_model=AnalyzeResponse)
+async def analyze_url(request: AnalyzeRequest, fastapi_request: Request):
+    try:
+        user_agent = fastapi_request.headers.get("user-agent", "")
+        browser = get_browser_from_ua(user_agent)
+        info = await extract_video_info(request.url, client_browser=browser)
+        return info
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Внутренняя ошибка при анализе видео: {str(e)}"
+        )
+
+@router.post("/download", response_model=DownloadResponse)
+async def start_download(request: DownloadRequest, background_tasks: BackgroundTasks, fastapi_request: Request):
+    task_id = str(uuid.uuid4())
+    
+    # Создаем задачу в менеджере
+    task = await task_manager.create_task(task_id)
+    
+    # Устанавливаем имя файла на основе переданного заголовка
+    if request.title:
+        task.update(filename=request.title)
+    
+    user_agent = fastapi_request.headers.get("user-agent", "")
+    browser = get_browser_from_ua(user_agent)
+    
+    # Запускаем задачу скачивания в фоне через FastAPI BackgroundTasks
+    background_tasks.add_task(
+        download_video_task,
+        task_id=task_id,
+        url=request.url,
+        resolution=request.resolution,
+        need_crop=request.need_crop,
+        crop_start=request.crop_start,
+        crop_end=request.crop_end,
+        client_browser=browser
+    )
+    
+    return DownloadResponse(task_id=task_id)
+
+@router.get("/tasks/{task_id}/progress")
+async def get_progress(task_id: str):
+    task = await task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Задача не найдена"
+        )
+        
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Content-Type": "text/event-stream",
+        "X-Accel-Buffering": "no"  # Отключает буферизацию в Nginx
+    }
+    
+    return StreamingResponse(
+        task_manager.subscribe(task_id),
+        headers=headers
+    )
+
+@router.get("/files/{task_id}")
+async def get_file(task_id: str, background_tasks: BackgroundTasks):
+    task = await task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Задача не найдена или устарела"
+        )
+        
+    if task.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Файл еще не готов. Статус: {task.status}"
+        )
+        
+    if not task.file_path or not os.path.exists(task.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Файл не найден на сервере"
+        )
+        
+    # Добавляем задачу удаления файла в фон после отдачи клиенту
+    background_tasks.add_task(delete_file_after_delay, task.file_path, task_id)
+    
+    return FileResponse(
+        path=task.file_path,
+        filename=task.filename,
+        media_type="application/octet-stream"
+    )

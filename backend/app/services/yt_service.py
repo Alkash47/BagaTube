@@ -1,0 +1,421 @@
+import asyncio
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from typing import Dict, List, Tuple, Optional
+from app.config import DOWNLOAD_DIR, MAX_CROP_DURATION
+from app.schemas.downloader import VideoFormatInfo, AnalyzeResponse
+from app.services.task_manager import task_manager
+
+# Регулярное выражение для парсинга прогресса yt-dlp
+# Пример: [download]  12.5% of  15.00MiB at  3.20MiB/s ETA 00:04
+PROGRESS_RE = re.compile(
+    r"\[download\]\s+(?P<percent>\d+(?:\.\d+)?)%\s+of\s+(?P<size>\S+)\s+at\s+(?P<speed>\S+)\s+ETA\s+(?P<eta>\S+)"
+)
+
+def parse_time_to_seconds(t_str: str) -> int:
+    parts = t_str.strip().split(':')
+    if len(parts) == 1:
+        return int(parts[0])
+    elif len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    elif len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    else:
+        raise ValueError("Неверный формат времени. Используйте ЧЧ:ММ:СС, ММ:СС или секунды.")
+
+def format_seconds_to_time(seconds: int) -> str:
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def setup_ffmpeg_path() -> bool:
+    if shutil.which("ffmpeg"):
+        return True
+        
+    # Ищем в WinGet Packages
+    winget_packages_dir = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
+    if os.path.exists(winget_packages_dir):
+        import glob
+        ffmpeg_bins = glob.glob(os.path.join(winget_packages_dir, "Gyan.FFmpeg*", "*", "bin"))
+        if ffmpeg_bins:
+            bin_path = ffmpeg_bins[0]
+            os.environ["PATH"] = bin_path + os.pathsep + os.environ["PATH"]
+            print(f"[PATH] Добавлен путь к ffmpeg: {bin_path}")
+            return True
+            
+    # Ищем также в Program Files
+    program_files_dir = os.path.expandvars(r"%ProgramFiles%")
+    if os.path.exists(program_files_dir):
+        import glob
+        ffmpeg_bins = glob.glob(os.path.join(program_files_dir, "ffmpeg*", "bin"))
+        if ffmpeg_bins:
+            bin_path = ffmpeg_bins[0]
+            os.environ["PATH"] = bin_path + os.pathsep + os.environ["PATH"]
+            print(f"[PATH] Добавлен путь к ffmpeg: {bin_path}")
+            return True
+            
+    return False
+
+async def check_ffmpeg() -> bool:
+    return setup_ffmpeg_path() or shutil.which("ffmpeg") is not None
+
+def get_browser_from_ua(ua: str) -> Optional[str]:
+    if not ua:
+        return None
+    ua = ua.lower()
+    if "edg/" in ua or "edge/" in ua:
+        return "edge"
+    elif "opr/" in ua or "opera/" in ua:
+        return "opera"
+    elif "brave" in ua:
+        return "brave"
+    elif "firefox" in ua:
+        return "firefox"
+    elif "chrome" in ua:
+        return "chrome"
+    elif "safari" in ua and "chrome" not in ua:
+        return "safari"
+    return None
+
+def get_active_browser_with_cookies() -> str:
+    if sys.platform != "win32":
+        return None
+        
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    app_data = os.environ.get("APPDATA", "")
+    
+    import glob
+    cookie_patterns = {
+        "chrome": [
+            os.path.join(local_app_data, "Google", "Chrome", "User Data", "Default", "Network", "Cookies"),
+            os.path.join(local_app_data, "Google", "Chrome", "User Data", "Profile *", "Network", "Cookies"),
+            os.path.join(local_app_data, "Google", "Chrome", "User Data", "Default", "Cookies"),
+        ],
+        "edge": [
+            os.path.join(local_app_data, "Microsoft", "Edge", "User Data", "Default", "Network", "Cookies"),
+            os.path.join(local_app_data, "Microsoft", "Edge", "User Data", "Profile *", "Network", "Cookies"),
+        ],
+        "firefox": [
+            os.path.join(app_data, "Mozilla", "Firefox", "Profiles", "*", "cookies.sqlite"),
+        ],
+        "brave": [
+            os.path.join(local_app_data, "BraveSoftware", "Brave-Browser", "User Data", "Default", "Network", "Cookies"),
+            os.path.join(local_app_data, "BraveSoftware", "Brave-Browser", "User Data", "Profile *", "Network", "Cookies"),
+        ],
+        "opera": [
+            os.path.join(app_data, "Opera Software", "Opera Stable", "Network", "Cookies"),
+            os.path.join(app_data, "Opera Software", "Opera Stable", "Cookies"),
+        ],
+    }
+    
+    best_browser = None
+    latest_mtime = 0
+    
+    for browser, patterns in cookie_patterns.items():
+        for pattern in patterns:
+            for filepath in glob.glob(pattern):
+                try:
+                    if os.path.exists(filepath):
+                        mtime = os.path.getmtime(filepath)
+                        if mtime > latest_mtime:
+                            latest_mtime = mtime
+                            best_browser = browser
+                except Exception:
+                    pass
+                    
+    return best_browser
+
+async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeResponse:
+    # Запускаем yt-dlp для получения JSON
+    def run_sync(use_cookies: bool, browser_name: str = None):
+        startupinfo = None
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+        args = [sys.executable, "-m", "yt_dlp", "--dump-json", "--no-warnings", "--no-playlist"]
+        
+        if use_cookies and browser_name:
+            args.extend(["--cookies-from-browser", browser_name])
+            print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
+            
+        if shutil.which("node"):
+            args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
+            
+        args.append(url)
+        
+        return subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            startupinfo=startupinfo
+        )
+
+    # 1. Сначала пробуем с куками
+    browser = client_browser if client_browser in ["chrome", "edge", "firefox", "brave", "opera", "safari"] else get_active_browser_with_cookies()
+    
+    result = None
+    if browser:
+        result = await asyncio.to_thread(run_sync, use_cookies=True, browser_name=browser)
+        stdout, stderr = result.stdout, result.stderr
+        error_msg = stderr.decode('utf-8', errors='replace').strip()
+        
+        # Если произошла ошибка доступа к кукам браузера, сбрасываем и пробуем заново без кук
+        if result.returncode != 0 and ("cookie" in error_msg.lower() or "dpapi" in error_msg.lower()):
+            print(f"[Cookies] Ошибка загрузки кук из {browser}: {error_msg}. Повторная попытка без кук...")
+            result = None
+
+    # 2. Если куки не использовались или произошла ошибка их чтения
+    if result is None:
+        result = await asyncio.to_thread(run_sync, use_cookies=False)
+        stdout, stderr = result.stdout, result.stderr
+        
+    if result.returncode != 0:
+        error_msg = stderr.decode('utf-8', errors='replace').strip()
+        if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
+            raise ValueError("Невалидный URL-адрес YouTube.")
+        elif "Video unavailable" in error_msg or "Sign in to confirm" in error_msg:
+            raise ValueError("Видео недоступно (удалено, приватное или требует авторизации/кук).")
+        else:
+            raise ValueError(f"Ошибка yt-dlp: {error_msg}")
+            
+    info = json.loads(stdout.decode('utf-8', errors='replace'))
+    
+    title = info.get("title", "Без названия")
+    author = info.get("uploader") or info.get("channel", "Неизвестно")
+    duration = int(info.get("duration", 0))
+    thumbnail = info.get("thumbnail")
+    
+    # Извлекаем доступные форматы
+    raw_formats = info.get("formats", [])
+    
+    # Нам нужны уникальные разрешения (высота кадра). 
+    # Собираем высоты для видеопотоков (где vcodec != none)
+    heights = set()
+    for f in raw_formats:
+        h = f.get("height")
+        if h and f.get("vcodec") != "none":
+            heights.add(h)
+            
+    sorted_heights = sorted(list(heights), reverse=True)
+    
+    formats_list = []
+    
+    # Добавляем видеоформаты
+    for height in sorted_heights:
+        # Для отображения пользователю
+        res_name = f"{height}p"
+        
+        # Найдем лучший формат для этой высоты для оценки размера
+        matching_formats = [f for f in raw_formats if f.get("height") == height and f.get("vcodec") != "none"]
+        best_match = matching_formats[0] if matching_formats else {}
+        
+        filesize = best_match.get("filesize") or best_match.get("filesize_approx")
+        filesize_mb = round(filesize / (1024 * 1024), 2) if filesize else None
+        
+        formats_list.append(VideoFormatInfo(
+            format_id=f"bestvideo[height<={height}]+bestaudio/best",
+            resolution=res_name,
+            height=height,
+            ext="mp4",
+            filesize_mb=filesize_mb,
+            fps=best_match.get("fps"),
+            note=best_match.get("format_note")
+        ))
+        
+    # Всегда добавляем опцию "Только аудио"
+    formats_list.append(VideoFormatInfo(
+        format_id="bestaudio/best",
+        resolution="audio",
+        ext="mp3",
+        note="Только аудиопоток (MP3)"
+    ))
+    
+    return AnalyzeResponse(
+        title=title,
+        author=author,
+        duration=duration,
+        duration_formatted=format_seconds_to_time(duration),
+        thumbnail=thumbnail,
+        formats=formats_list
+    )
+
+async def download_video_task(
+    task_id: str,
+    url: str,
+    resolution: str,
+    need_crop: bool,
+    crop_start: str = None,
+    crop_end: str = None,
+    client_browser: str = None
+):
+    task = await task_manager.get_task(task_id)
+    if not task:
+        return
+
+    # Проверка наличия ffmpeg
+    if not await check_ffmpeg():
+        task.update(status="failed", error="ffmpeg не установлен в системе. Пожалуйста, установите ffmpeg для поддержки слияния и обрезки видео.")
+        return
+
+    # Подготовка путей
+    outtmpl = os.path.join(DOWNLOAD_DIR, f"{task_id}.%(ext)s")
+    
+    # Базовые аргументы для yt-dlp
+    base_args = [
+        sys.executable, "-m", "yt_dlp",
+        "--no-playlist",
+        "--no-warnings",
+        "--progress",
+        "-o", outtmpl,
+    ]
+    
+    # Автоматический выбор JS-рантайма
+    if shutil.which("node"):
+        base_args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
+    
+    # Настройка формата
+    is_audio = resolution.lower() == "audio"
+    if is_audio:
+        base_args.extend([
+            "-f", "bestaudio/best",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", "0"
+        ])
+    else:
+        # resolution вида "1080p", "720p" и т.д.
+        try:
+            height = int(resolution.replace("p", ""))
+            format_str = f"bestvideo[height<={height}]+bestaudio/best"
+        except ValueError:
+            format_str = "best/best"
+            
+        base_args.extend([
+            "-f", format_str,
+            "--merge-output-format", "mp4"
+        ])
+
+    # Настройка обрезки
+    if need_crop and crop_start and crop_end:
+        try:
+            start_sec = parse_time_to_seconds(crop_start)
+            end_sec = parse_time_to_seconds(crop_end)
+            duration = end_sec - start_sec
+            
+            if duration <= 0:
+                task.update(status="failed", error="Время конца обрезки должно быть больше времени начала.")
+                return
+            if duration > MAX_CROP_DURATION:
+                task.update(status="failed", error=f"Превышена максимальная длительность обрезки ({MAX_CROP_DURATION // 60} мин).")
+                return
+                
+            base_args.extend([
+                "--download-sections", f"*{crop_start}-{crop_end}",
+                "--force-keyframes-at-cuts"
+            ])
+        except ValueError as e:
+            task.update(status="failed", error=str(e))
+            return
+
+    # Добавляем URL
+    base_args.append(url)
+    
+    # Запуск загрузки
+    task.update(status="downloading", progress=0)
+    
+    loop = asyncio.get_running_loop()
+    
+    def update_task(**kwargs):
+        loop.call_soon_threadsafe(lambda: task.update(**kwargs))
+
+    browser = client_browser if client_browser in ["chrome", "edge", "firefox", "brave", "opera", "safari"] else get_active_browser_with_cookies()
+
+    def run_sync_download(use_cookies: bool):
+        startupinfo = None
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+        cmd_args = base_args.copy()
+        if use_cookies and browser:
+            # Вставляем --cookies-from-browser после sys.executable -m yt_dlp (индексы 3 и 4)
+            cmd_args.insert(3, "--cookies-from-browser")
+            cmd_args.insert(4, browser)
+            print(f"[Download Cookies] Попытка использовать куки браузера: {browser}")
+            
+        process = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            startupinfo=startupinfo
+        )
+        
+        # Чтение вывода yt-dlp построчно
+        for line_bytes in iter(process.stdout.readline, b''):
+            line = line_bytes.decode('utf-8', errors='replace').strip()
+            
+            # Парсинг прогресса скачивания
+            match = PROGRESS_RE.search(line)
+            if match:
+                percent = int(float(match.group("percent")))
+                speed = match.group("speed")
+                eta = match.group("eta")
+                update_task(progress=percent, speed=speed, eta=eta)
+                
+            # Парсинг процесса слияния или конвертации
+            elif "[Merger]" in line or "Merging formats into" in line:
+                update_task(status="processing", progress=95, speed="N/A", eta="Merge...")
+            elif "[ExtractAudio]" in line:
+                update_task(status="processing", progress=98, speed="N/A", eta="Convert...")
+                
+        stderr_data = process.stderr.read()
+        returncode = process.wait()
+        return returncode, stderr_data
+
+    try:
+        use_cookies = bool(browser)
+        returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=use_cookies)
+        
+        # Если произошла ошибка кукисов, пробуем заново без них
+        if returncode != 0:
+            error_msg = stderr_data.decode('utf-8', errors='replace').strip()
+            if use_cookies and ("cookie" in error_msg.lower() or "dpapi" in error_msg.lower()):
+                print(f"[Download Cookies] Ошибка загрузки кук из {browser}: {error_msg}. Повторная попытка без кук...")
+                returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=False)
+                
+        if returncode != 0:
+            error_msg = stderr_data.decode('utf-8', errors='replace').strip()
+            task.update(status="failed", error=f"Ошибка скачивания: {error_msg}")
+            return
+            
+        # Поиск финального файла на диске
+        import glob
+        final_files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{task_id}.*")) if not f.endswith((".part", ".ytdl"))]
+        
+        if not final_files:
+            task.update(status="failed", error="Файл не был создан.")
+            return
+            
+        file_path = final_files[0]
+        ext = os.path.splitext(file_path)[1]
+        
+        # Получаем оригинальное имя видео (для переименования при скачивании)
+        # Получим его асинхронно
+        title_clean = re.sub(r'[\\/*?:"<>|]', "", task.filename or "video")
+        download_filename = f"{title_clean}{ext}"
+        
+        task.update(
+            status="completed",
+            progress=100,
+            file_path=file_path,
+            filename=download_filename
+        )
+        
+    except Exception as e:
+        task.update(status="failed", error=f"Внутренняя ошибка: {str(e)}")
