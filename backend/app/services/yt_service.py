@@ -167,6 +167,7 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             "--no-warnings",
             "--no-playlist",
             "--no-check-certificate",
+            "--impersonate", "chrome",
             "--extractor-args", "youtube:player_client=android,ios"
         ]
         
@@ -315,6 +316,7 @@ async def download_video_task(
         "--no-warnings",
         "--progress",
         "--no-check-certificate",
+        "--impersonate", "chrome",
         "--extractor-args", "youtube:player_client=android,ios",
         "-o", outtmpl,
     ]
