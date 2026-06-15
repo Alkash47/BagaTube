@@ -321,8 +321,15 @@ function handleDownloadError(errorText) {
     }
     
     let userMsg = `Ошибка скачивания: ${errorText}`;
-    if (errorText.includes("авторизации/кук") || errorText.includes("Sign in to confirm") || errorText.includes("bot") || errorText.includes("Video unavailable")) {
-        userMsg += `\n\n💡 Решение: Загрузите cookies.txt в настройках (шестеренка в правом верхнем углу) для обхода блокировки.`;
+    if (
+        errorText.includes("авторизации/кук") || 
+        errorText.includes("Sign in to confirm") || 
+        errorText.includes("bot") || 
+        errorText.includes("Video unavailable") ||
+        errorText.includes("10054") ||
+        errorText.includes("ffmpeg exited")
+    ) {
+        userMsg += `\n\n💡 Решение: Загрузите cookies.txt в настройках (шестеренка в правом верхнем углу) для обхода блокировки YouTube.`;
     }
     alert(userMsg);
     
