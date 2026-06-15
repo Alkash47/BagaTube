@@ -266,7 +266,7 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
         filesize_mb = round(filesize / (1024 * 1024), 2) if filesize else None
         
         formats_list.append(VideoFormatInfo(
-            format_id=f"bestvideo[height<={height}]+bestaudio/best",
+            format_id=f"res:{height}",
             resolution=res_name,
             height=height,
             ext="mp4",
@@ -342,11 +342,12 @@ async def download_video_task(
         ])
     else:
         # resolution вида "1080p", "720p" и т.д.
+        format_str = "bv*+ba/b"
         try:
             height = int(resolution.replace("p", ""))
-            format_str = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+            base_args.extend(["-S", f"res:{height}"])
         except ValueError:
-            format_str = "best/best"
+            pass
             
         base_args.extend([
             "-f", format_str,
