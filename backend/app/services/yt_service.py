@@ -183,12 +183,13 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             "--impersonate", "chrome",
         ]
         
-        if use_cookies and COOKIES_FILE.exists():
-            args.extend(["--cookies", str(COOKIES_FILE)])
-            print(f"[Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
-        elif use_cookies and browser_name:
-            args.extend(["--cookies-from-browser", browser_name])
-            print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
+        if use_cookies:
+            if browser_name == "custom_file" and COOKIES_FILE.exists():
+                args.extend(["--cookies", str(COOKIES_FILE)])
+                print(f"[Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
+            elif browser_name and browser_name != "custom_file":
+                args.extend(["--cookies-from-browser", browser_name])
+                print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
             
         if shutil.which("node"):
             args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -202,28 +203,38 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             startupinfo=startupinfo
         )
 
-    # Пробуем получить информацию по очереди для всех кандидатов
-    browsers_to_try = get_candidate_browsers(client_browser)
     result = None
     last_error_msg = ""
     
-    for browser in browsers_to_try:
-        print(f"[Info] Пробуем получить информацию с использованием кук браузера: {browser}")
-        res = await asyncio.to_thread(run_sync, use_cookies=True, browser_name=browser)
-        stdout, stderr = res.stdout, res.stderr
-        error_msg = stderr.decode('utf-8', errors='replace').strip()
-        
+    # 1. Сначала пробуем загруженный файл кук, если он есть
+    if COOKIES_FILE.exists():
+        print(f"[Info] Пробуем получить информацию с использованием загруженного файла кук...")
+        res = await asyncio.to_thread(run_sync, use_cookies=True, browser_name="custom_file")
         if res.returncode == 0:
             result = res
-            break
         else:
-            last_error_msg = error_msg
-            print(f"[Cookies] Ошибка при использовании браузера {browser}: {error_msg}")
-            # Если ошибка НЕ связана с куками или защитой, прекращаем цикл
-            if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
-                break
+            last_error_msg = res.stderr.decode('utf-8', errors='replace').strip()
+            print(f"[Cookies] Загруженный файл кук не сработал: {last_error_msg}")
 
-    # Если с куками ни один браузер не сработал (или список был пуст), пробуем без кук
+    # 2. Если файл кук не сработал или его нет, пробуем браузеры по очереди
+    if result is None:
+        browsers_to_try = get_candidate_browsers(client_browser)
+        for browser in browsers_to_try:
+            print(f"[Info] Пробуем получить информацию с использованием кук браузера: {browser}")
+            res = await asyncio.to_thread(run_sync, use_cookies=True, browser_name=browser)
+            stdout, stderr = res.stdout, res.stderr
+            error_msg = stderr.decode('utf-8', errors='replace').strip()
+            
+            if res.returncode == 0:
+                result = res
+                break
+            else:
+                last_error_msg = error_msg
+                print(f"[Cookies] Ошибка при использовании браузера {browser}: {error_msg}")
+                if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
+                    break
+
+    # 3. Если с куками ни один браузер не сработал, пробуем без кук
     if result is None:
         if "Incomplete YouTube ID" in last_error_msg or "is not a valid URL" in last_error_msg:
             raise ValueError("Невалидный URL-адрес YouTube.")
@@ -415,15 +426,15 @@ async def download_video_task(
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
         cmd_args = base_args.copy()
-        if use_cookies and COOKIES_FILE.exists():
-            cmd_args.insert(3, "--cookies")
-            cmd_args.insert(4, str(COOKIES_FILE))
-            print(f"[Download Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
-        elif use_cookies and browser_name:
-            # Вставляем --cookies-from-browser после sys.executable -m yt_dlp (индексы 3 и 4)
-            cmd_args.insert(3, "--cookies-from-browser")
-            cmd_args.insert(4, browser_name)
-            print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
+        if use_cookies:
+            if browser_name == "custom_file" and COOKIES_FILE.exists():
+                cmd_args.insert(3, "--cookies")
+                cmd_args.insert(4, str(COOKIES_FILE))
+                print(f"[Download Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
+            elif browser_name and browser_name != "custom_file":
+                cmd_args.insert(3, "--cookies-from-browser")
+                cmd_args.insert(4, browser_name)
+                print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
             
         process = subprocess.Popen(
             cmd_args,
@@ -468,22 +479,35 @@ async def download_video_task(
     try:
         returncode = -1
         stderr_data = b""
+        result_found = False
         
-        # Пробуем каждый браузер с куками по очереди
-        for browser in browsers_to_try:
-            print(f"[Download] Пробуем скачать с использованием кук браузера: {browser}")
-            returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name=browser)
+        # 1. Пробуем сначала загруженный файл кук
+        if COOKIES_FILE.exists():
+            print(f"[Download] Пробуем скачать с использованием загруженного файла кук...")
+            returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name="custom_file")
             if returncode == 0:
-                break
+                result_found = True
             else:
                 error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-                print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg}")
-                # Если ошибка вызвана некорректной обрезкой, прекращаем цикл
-                if "crop" in error_msg.lower() or "sections" in error_msg.lower():
+                print(f"[Download] Ошибка при скачивании с загруженными куками: {error_msg}")
+        
+        # 2. Если файл кук не сработал, пробуем каждый браузер по очереди
+        if not result_found:
+            for browser in browsers_to_try:
+                print(f"[Download] Пробуем скачать с использованием кук браузера: {browser}")
+                returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name=browser)
+                if returncode == 0:
+                    result_found = True
                     break
-                    
-        # Если с куками не вышло, пробуем без кук
-        if returncode != 0:
+                else:
+                    error_msg = stderr_data.decode('utf-8', errors='replace').strip()
+                    print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg}")
+                    # Если ошибка вызвана некорректной обрезкой, прекращаем цикл
+                    if "crop" in error_msg.lower() or "sections" in error_msg.lower():
+                        break
+                        
+        # 3. Если с куками не вышло, пробуем без кук
+        if not result_found:
             error_msg = stderr_data.decode('utf-8', errors='replace').strip()
             if not ("crop" in error_msg.lower() or "sections" in error_msg.lower()):
                 print("[Download] Пробуем скачать без использования кук...")
