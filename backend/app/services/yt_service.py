@@ -439,13 +439,16 @@ async def download_video_task(
         process = subprocess.Popen(
             cmd_args,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Мёрджим stderr в stdout для предотвращения дедлока
             startupinfo=startupinfo
         )
         
+        output_lines = []
         # Чтение вывода yt-dlp построчно
         for line_bytes in iter(process.stdout.readline, b''):
             line = line_bytes.decode('utf-8', errors='replace').strip()
+            if line:
+                output_lines.append(line)
             
             # Парсинг прогресса скачивания
             match = PROGRESS_RE.search(line)
@@ -472,9 +475,10 @@ async def download_video_task(
             elif "[ExtractAudio]" in line:
                 update_task(status="processing", progress=98, speed="N/A", eta="Convert...")
                 
-        stderr_data = process.stderr.read()
         returncode = process.wait()
-        return returncode, stderr_data
+        # Возвращаем последние 20 строк вывода как сообщение об ошибке в случае сбоя
+        error_msg = "\n".join(output_lines[-20:]) if output_lines else "Unknown error"
+        return returncode, error_msg.encode('utf-8', errors='replace')
 
     try:
         returncode = -1
