@@ -209,7 +209,7 @@ async def get_debug_log():
 @router.get("/list_formats")
 async def list_remote_formats(url: str):
     import subprocess, sys
-    args = [sys.executable, "-m", "yt_dlp", "--list-formats", "--no-warnings"]
+    args = [sys.executable, "-m", "yt_dlp", "--list-formats", "--no-warnings", "--impersonate", "chrome"]
     if COOKIES_FILE.exists():
         args.extend(["--cookies", str(COOKIES_FILE)])
     else:
