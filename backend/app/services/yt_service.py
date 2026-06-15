@@ -161,7 +161,14 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
-        args = [sys.executable, "-m", "yt_dlp", "--dump-json", "--no-warnings", "--no-playlist"]
+        args = [
+            sys.executable, "-m", "yt_dlp",
+            "--dump-json",
+            "--no-warnings",
+            "--no-playlist",
+            "--no-check-certificate",
+            "--extractor-args", "youtube:player_client=android,ios"
+        ]
         
         if use_cookies and browser_name:
             args.extend(["--cookies-from-browser", browser_name])
@@ -307,6 +314,8 @@ async def download_video_task(
         "--no-playlist",
         "--no-warnings",
         "--progress",
+        "--no-check-certificate",
+        "--extractor-args", "youtube:player_client=android,ios",
         "-o", outtmpl,
     ]
     
