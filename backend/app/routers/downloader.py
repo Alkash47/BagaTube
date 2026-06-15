@@ -1,12 +1,16 @@
 import asyncio
 import os
 import uuid
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 
-from app.schemas.downloader import AnalyzeRequest, AnalyzeResponse, DownloadRequest, DownloadResponse
+from app.schemas.downloader import (
+    AnalyzeRequest, AnalyzeResponse, DownloadRequest, DownloadResponse,
+    CookieStatusResponse, SaveCookiesRequest
+)
 from app.services.task_manager import task_manager
 from app.services.yt_service import extract_video_info, download_video_task, get_browser_from_ua
+from app.config import COOKIES_FILE
 
 router = APIRouter(prefix="/api/downloader", tags=["downloader"])
 
@@ -120,3 +124,74 @@ async def get_file(task_id: str, background_tasks: BackgroundTasks):
         filename=task.filename,
         media_type="application/octet-stream"
     )
+
+@router.get("/cookies/status", response_model=CookieStatusResponse)
+async def get_cookies_status():
+    if COOKIES_FILE.exists():
+        try:
+            stat = os.stat(COOKIES_FILE)
+            return CookieStatusResponse(
+                has_cookies=True,
+                filename=COOKIES_FILE.name,
+                mtime=stat.st_mtime
+            )
+        except Exception:
+            pass
+    return CookieStatusResponse(has_cookies=False)
+
+@router.post("/cookies")
+async def save_cookies_text(payload: SaveCookiesRequest):
+    try:
+        COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        text = payload.cookies_text.strip()
+        if not text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пустое содержимое кук"
+            )
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(text)
+        return {"status": "success", "message": "Куки успешно сохранены"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Не удалось сохранить куки: {str(e)}"
+        )
+
+@router.post("/cookies/upload")
+async def upload_cookies_file(file: UploadFile = File(...)):
+    try:
+        COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        content = await file.read()
+        text = content.decode("utf-8", errors="replace").strip()
+        if not text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пустой файл кук"
+            )
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(text)
+        return {"status": "success", "message": f"Файл {file.filename} успешно загружен и сохранен"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Не удалось загрузить файл кук: {str(e)}"
+        )
+
+@router.delete("/cookies")
+async def delete_cookies():
+    try:
+        if COOKIES_FILE.exists():
+            os.remove(COOKIES_FILE)
+            return {"status": "success", "message": "Куки успешно удалены"}
+        return {"status": "success", "message": "Куки уже отсутствуют на сервере"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Не удалось удалить куки: {str(e)}"
+        )
+

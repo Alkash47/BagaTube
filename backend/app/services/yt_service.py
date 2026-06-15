@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from typing import Dict, List, Tuple, Optional
-from app.config import DOWNLOAD_DIR, MAX_CROP_DURATION
+from app.config import DOWNLOAD_DIR, MAX_CROP_DURATION, COOKIES_FILE
 from app.schemas.downloader import VideoFormatInfo, AnalyzeResponse
 from app.services.task_manager import task_manager
 
@@ -171,7 +171,10 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             "--extractor-args", "youtube:player_client=android,ios"
         ]
         
-        if use_cookies and browser_name:
+        if COOKIES_FILE.exists():
+            args.extend(["--cookies", str(COOKIES_FILE)])
+            print(f"[Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
+        elif use_cookies and browser_name:
             args.extend(["--cookies-from-browser", browser_name])
             print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
             
@@ -389,7 +392,11 @@ async def download_video_task(
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
         cmd_args = base_args.copy()
-        if use_cookies and browser_name:
+        if COOKIES_FILE.exists():
+            cmd_args.insert(3, "--cookies")
+            cmd_args.insert(4, str(COOKIES_FILE))
+            print(f"[Download Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
+        elif use_cookies and browser_name:
             # Вставляем --cookies-from-browser после sys.executable -m yt_dlp (индексы 3 и 4)
             cmd_args.insert(3, "--cookies-from-browser")
             cmd_args.insert(4, browser_name)

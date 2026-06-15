@@ -19,3 +19,7 @@ CORS_ORIGINS = ["*"]
 SAVE_TO_DATABASE = os.getenv("SAVE_TO_DATABASE", "False").lower() in ("true", "1", "yes")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bagatube.db")
 
+# Путь к файлу кук YouTube
+COOKIES_FILE = BASE_DIR / "downloads" / "youtube_cookies.txt"
+
+

@@ -31,3 +31,12 @@ class DownloadRequest(BaseModel):
 
 class DownloadResponse(BaseModel):
     task_id: str
+
+class CookieStatusResponse(BaseModel):
+    has_cookies: bool
+    filename: Optional[str] = None
+    mtime: Optional[float] = None
+
+class SaveCookiesRequest(BaseModel):
+    cookies_text: str
+

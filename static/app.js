@@ -145,7 +145,11 @@ async function analyzeVideo() {
 }
 
 function showUrlError(message) {
-    urlError.querySelector('.error-text').textContent = message;
+    let finalMessage = message;
+    if (message.includes("авторизации/кук") || message.includes("Sign in to confirm") || message.includes("Video unavailable") || message.includes("bot")) {
+        finalMessage = `${message}<br><br>💡 <strong>Решение:</strong> Сервер заблокирован YouTube. Нажмите на иконку настроек <i class="fa-solid fa-gear"></i> в верхнем правом углу и загрузите файл <code>cookies.txt</code>.`;
+    }
+    urlError.querySelector('.error-text').innerHTML = finalMessage;
     urlError.classList.remove('hidden');
 }
 
@@ -316,7 +320,11 @@ function handleDownloadError(errorText) {
         eventSource = null;
     }
     
-    alert(`Ошибка скачивания: ${errorText}`);
+    let userMsg = `Ошибка скачивания: ${errorText}`;
+    if (errorText.includes("авторизации/кук") || errorText.includes("Sign in to confirm") || errorText.includes("bot") || errorText.includes("Video unavailable")) {
+        userMsg += `\n\n💡 Решение: Загрузите cookies.txt в настройках (шестеренка в правом верхнем углу) для обхода блокировки.`;
+    }
+    alert(userMsg);
     
     // Возвращаем форму настроек
     progressSection.classList.add('hidden');
@@ -362,6 +370,7 @@ function resetApp() {
 document.addEventListener('DOMContentLoaded', () => {
     initThemeToggle();
     initDotField();
+    initSettings();
 });
 
 function initThemeToggle() {
@@ -577,5 +586,206 @@ function initDotField() {
     window.addEventListener('resize', resize);
     window.addEventListener('mousemove', onMouseMove, { passive: true });
     rafId = requestAnimationFrame(tick);
+}
+
+// Настройки кук для обхода блокировок YouTube
+async function initSettings() {
+    const settingsToggle = document.getElementById('settings-toggle');
+    const settingsModal = document.getElementById('settings-modal');
+    const btnCloseSettings = document.getElementById('btn-close-settings');
+    const modalBackdrop = settingsModal.querySelector('.modal-backdrop');
+    
+    const cookiesStatusDot = document.getElementById('cookies-status-dot');
+    const cookiesStatusText = document.getElementById('cookies-status-text');
+    const btnDeleteCookies = document.getElementById('btn-delete-cookies');
+    
+    const tabTriggers = document.querySelectorAll('.tab-trigger');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    
+    const cookiesDropZone = document.getElementById('cookies-drop-zone');
+    const cookiesFileInput = document.getElementById('cookies-file-input');
+    const cookiesTextarea = document.getElementById('cookies-textarea');
+    const btnSaveCookiesText = document.getElementById('btn-save-cookies-text');
+
+    // 1. Открытие/закрытие модального окна
+    function openModal() {
+        settingsModal.classList.remove('hidden');
+        checkCookiesStatus();
+    }
+    
+    function closeModal() {
+        settingsModal.classList.add('hidden');
+    }
+    
+    settingsToggle.addEventListener('click', openModal);
+    btnCloseSettings.addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', closeModal);
+    
+    // Закрытие по Escape
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+
+    // 2. Переключение вкладок
+    tabTriggers.forEach(trigger => {
+        trigger.addEventListener('click', () => {
+            const targetTab = trigger.getAttribute('data-tab');
+            
+            tabTriggers.forEach(t => t.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
+            
+            trigger.classList.add('active');
+            document.getElementById(targetTab).classList.add('active');
+        });
+    });
+
+    // 3. Проверка статуса кук
+    async function checkCookiesStatus() {
+        try {
+            const res = await fetch('/api/downloader/cookies/status');
+            const data = await res.json();
+            
+            if (data.has_cookies) {
+                cookiesStatusDot.className = 'status-indicator-dot active';
+                
+                // Форматируем время изменения
+                let timeStr = '';
+                if (data.mtime) {
+                    const date = new Date(data.mtime * 1000);
+                    timeStr = ` (изменен: ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
+                }
+                cookiesStatusText.textContent = `Куки активны${timeStr}`;
+                btnDeleteCookies.classList.remove('hidden');
+            } else {
+                cookiesStatusDot.className = 'status-indicator-dot inactive';
+                cookiesStatusText.textContent = 'Куки не загружены (запросы могут блокироваться YouTube)';
+                btnDeleteCookies.classList.add('hidden');
+            }
+        } catch (err) {
+            console.error('Ошибка проверки статуса кук:', err);
+            cookiesStatusDot.className = 'status-indicator-dot';
+            cookiesStatusText.textContent = 'Не удалось связаться с сервером';
+        }
+    }
+
+    // Первоначальная проверка на старте
+    checkCookiesStatus();
+
+    // 4. Удаление кук
+    btnDeleteCookies.addEventListener('click', async () => {
+        if (!confirm('Вы действительно хотите удалить cookies с сервера?')) return;
+        
+        try {
+            btnDeleteCookies.disabled = true;
+            const res = await fetch('/api/downloader/cookies', { method: 'DELETE' });
+            const data = await res.json();
+            
+            if (res.ok) {
+                cookiesTextarea.value = '';
+                await checkCookiesStatus();
+                alert('Куки успешно удалены.');
+            } else {
+                alert('Ошибка: ' + (data.detail || 'Не удалось удалить куки.'));
+            }
+        } catch (err) {
+            alert('Ошибка сети: ' + err.message);
+        } finally {
+            btnDeleteCookies.disabled = false;
+        }
+    });
+
+    // 5. Загрузка файла через Input/Drag & Drop
+    async function uploadCookiesFile(file) {
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const res = await fetch('/api/downloader/cookies/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert('Файл cookies успешно загружен и применен!');
+                await checkCookiesStatus();
+            } else {
+                alert('Ошибка загрузки: ' + (data.detail || 'Неизвестная ошибка.'));
+            }
+        } catch (err) {
+            alert('Ошибка сети: ' + err.message);
+        }
+    }
+
+    // Клик по зоне drag & drop
+    cookiesDropZone.addEventListener('click', () => {
+        cookiesFileInput.click();
+    });
+
+    cookiesFileInput.addEventListener('change', () => {
+        if (cookiesFileInput.files.length > 0) {
+            uploadCookiesFile(cookiesFileInput.files[0]);
+        }
+    });
+
+    // Drag and Drop события
+    ['dragenter', 'dragover'].forEach(eventName => {
+        cookiesDropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            cookiesDropZone.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        cookiesDropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            cookiesDropZone.classList.remove('dragover');
+        }, false);
+    });
+
+    cookiesDropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length > 0) {
+            uploadCookiesFile(files[0]);
+        }
+    });
+
+    // 6. Сохранение вставленного текста
+    btnSaveCookiesText.addEventListener('click', async () => {
+        const text = cookiesTextarea.value.trim();
+        if (!text) {
+            alert('Пожалуйста, вставьте содержимое файла cookies.txt.');
+            return;
+        }
+
+        try {
+            btnSaveCookiesText.disabled = true;
+            btnSaveCookiesText.querySelector('.btn-text').textContent = 'Сохранение...';
+            
+            const res = await fetch('/api/downloader/cookies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies_text: text })
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert('Куки успешно сохранены!');
+                await checkCookiesStatus();
+            } else {
+                alert('Ошибка: ' + (data.detail || 'Не удалось сохранить куки.'));
+            }
+        } catch (err) {
+            alert('Ошибка сети: ' + err.message);
+        } finally {
+            btnSaveCookiesText.disabled = false;
+            btnSaveCookiesText.querySelector('.btn-text').textContent = 'Сохранить куки';
+        }
+    });
 }
 

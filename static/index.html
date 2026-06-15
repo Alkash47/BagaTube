@@ -23,6 +23,12 @@
         <i class="fa-solid fa-sun sun-icon hidden"></i>
     </button>
 
+    <!-- Кнопка настроек -->
+    <button id="settings-toggle" class="settings-toggle-btn" aria-label="Настройки">
+        <i class="fa-solid fa-gear"></i>
+    </button>
+
+
     <!-- Фоновый интерактивный холст DotField -->
     <div id="dot-field-container" class="dot-field-container">
         <canvas id="dot-field-canvas"></canvas>
@@ -188,7 +194,91 @@
         </footer>
     </div>
 
+    <!-- Модальное окно настроек -->
+    <div id="settings-modal" class="modal-wrapper hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-window">
+            <header class="modal-header">
+                <h3 class="modal-title"><i class="fa-solid fa-gear"></i> Настройки YouTube Cookies</h3>
+                <button id="btn-close-settings" class="modal-close-btn">&times;</button>
+            </header>
+            
+            <div class="modal-body">
+                <p class="modal-intro">
+                    YouTube блокирует запросы из облака. Для обхода блокировок загрузите Netscape-файл <code>cookies.txt</code>.
+                </p>
+
+                <!-- Статус кук -->
+                <div class="cookies-status-panel" id="cookies-status-panel">
+                    <div class="status-info">
+                        <span class="status-indicator-dot" id="cookies-status-dot"></span>
+                        <span class="status-text" id="cookies-status-text">Загрузка статуса...</span>
+                    </div>
+                    <button id="btn-delete-cookies" class="btn btn-secondary btn-xs hidden">
+                        <i class="fa-solid fa-trash-can"></i> Удалить куки
+                    </button>
+                </div>
+
+                <div class="modal-divider"></div>
+
+                <!-- Вкладки настроек -->
+                <div class="tabs-container">
+                    <div class="tabs-header">
+                        <button class="tab-trigger active" data-tab="tab-upload-file">
+                            <i class="fa-solid fa-file-arrow-up"></i> Загрузить файл
+                        </button>
+                        <button class="tab-trigger" data-tab="tab-paste-text">
+                            <i class="fa-solid fa-file-code"></i> Вставить текст
+                        </button>
+                    </div>
+
+                    <div class="tabs-content">
+                        <!-- Вкладка 1: Загрузка файла -->
+                        <div class="tab-pane active" id="tab-upload-file">
+                            <div class="drop-zone" id="cookies-drop-zone">
+                                <i class="fa-solid fa-cloud-arrow-up drop-zone-icon"></i>
+                                <p class="drop-zone-text">Перетащите <code>cookies.txt</code> сюда или нажмите для выбора</p>
+                                <span class="drop-zone-sub">Поддерживается только формат .txt</span>
+                                <input type="file" id="cookies-file-input" class="drop-zone-input" accept=".txt">
+                            </div>
+                        </div>
+
+                        <!-- Вкладка 2: Вставка текста -->
+                        <div class="tab-pane" id="tab-paste-text">
+                            <div class="input-group">
+                                <label for="cookies-textarea" class="input-label">Содержимое cookies.txt (Netscape формат)</label>
+                                <textarea id="cookies-textarea" rows="6" placeholder="# Netscape HTTP Cookie File&#10;# http://curl.haxx.se/rfc/cookie_spec.html&#10;# This is a generated file! Do not edit."></textarea>
+                            </div>
+                            <button id="btn-save-cookies-text" class="btn btn-accent btn-small">
+                                <span class="btn-text">Сохранить куки</span>
+                                <i class="fa-solid fa-floppy-disk btn-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-divider"></div>
+
+                <!-- Инструкция -->
+                <div class="cookies-instructions">
+                    <h4>Как экспортировать cookies из браузера:</h4>
+                    <ol>
+                        <li>Установите расширение <strong>«Get cookies.txt LOCALLY»</strong> в Chrome/Firefox.</li>
+                        <li>Откройте сайт <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer">youtube.com</a> и войдите в аккаунт.</li>
+                        <li>Нажмите на иконку расширения и скачайте cookies (или скопируйте их).</li>
+                        <li>Загрузите файл или вставьте текст в форму выше.</li>
+                    </ol>
+                    <div class="warning-alert">
+                        <i class="fa-solid fa-shield-halved warning-alert-icon"></i>
+                        <span><strong>Безопасность:</strong> Ваши куки используются исключительно для прохождения авторизации yt-dlp при запросах к YouTube. Они хранятся на сервере приватно и могут быть удалены вами в любой момент кнопкой «Удалить куки».</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom JS -->
     <script src="/static/app.js"></script>
+
 </body>
 </html>
