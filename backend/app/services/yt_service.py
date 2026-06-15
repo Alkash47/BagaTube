@@ -65,6 +65,16 @@ def setup_ffmpeg_path() -> bool:
     return False
 
 async def check_ffmpeg() -> bool:
+    # 1. Проверяем наличие скачанного ffmpeg.exe в папке проекта или рядом с .exe
+    if getattr(sys, 'frozen', False):
+        ffmpeg_path = Path(sys.executable).parent / "ffmpeg.exe"
+    else:
+        ffmpeg_path = BASE_DIR / "ffmpeg.exe"
+        
+    if ffmpeg_path.exists():
+        return True
+        
+    # 2. Проверяем системный PATH и другие пути
     return setup_ffmpeg_path() or shutil.which("ffmpeg") is not None
 
 def get_browser_from_ua(ua: str) -> Optional[str]:
