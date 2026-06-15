@@ -133,6 +133,11 @@ def get_browsers_ordered_by_cookies() -> List[str]:
     return [b[0] for b in browser_mtimes]
 
 def get_candidate_browsers(client_browser: str = None) -> List[str]:
+    # На удаленном сервере (Linux) нет доступа к браузерам пользователя,
+    # поэтому попытки прочитать куки из локальных путей приведут только к задержкам.
+    if sys.platform != "win32":
+        return []
+        
     system_browsers = get_browsers_ordered_by_cookies()
     candidates = []
     
