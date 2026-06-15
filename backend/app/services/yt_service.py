@@ -82,9 +82,9 @@ def get_browser_from_ua(ua: str) -> Optional[str]:
         return "safari"
     return None
 
-def get_active_browser_with_cookies() -> str:
+def get_browsers_ordered_by_cookies() -> List[str]:
     if sys.platform != "win32":
-        return None
+        return []
         
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     app_data = os.environ.get("APPDATA", "")
@@ -113,22 +113,40 @@ def get_active_browser_with_cookies() -> str:
         ],
     }
     
-    best_browser = None
-    latest_mtime = 0
+    browser_mtimes = []
     
     for browser, patterns in cookie_patterns.items():
+        max_mtime = 0
         for pattern in patterns:
             for filepath in glob.glob(pattern):
                 try:
                     if os.path.exists(filepath):
                         mtime = os.path.getmtime(filepath)
-                        if mtime > latest_mtime:
-                            latest_mtime = mtime
-                            best_browser = browser
+                        if mtime > max_mtime:
+                            max_mtime = mtime
                 except Exception:
                     pass
-                    
-    return best_browser
+        if max_mtime > 0:
+            browser_mtimes.append((browser, max_mtime))
+            
+    browser_mtimes.sort(key=lambda x: x[1], reverse=True)
+    return [b[0] for b in browser_mtimes]
+
+def get_candidate_browsers(client_browser: str = None) -> List[str]:
+    system_browsers = get_browsers_ordered_by_cookies()
+    candidates = []
+    
+    if client_browser in ["chrome", "edge", "firefox", "brave", "opera", "safari"]:
+        candidates.append(client_browser)
+        
+    for b in system_browsers:
+        if b not in candidates:
+            candidates.append(b)
+            
+    if not candidates:
+        candidates = ["chrome", "edge", "firefox", "brave", "opera"]
+        
+    return candidates
 
 async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeResponse:
     # Запускаем yt-dlp для получения JSON
@@ -156,33 +174,45 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             startupinfo=startupinfo
         )
 
-    # 1. Сначала пробуем с куками
-    browser = client_browser if client_browser in ["chrome", "edge", "firefox", "brave", "opera", "safari"] else get_active_browser_with_cookies()
-    
+    # Пробуем получить информацию по очереди для всех кандидатов
+    browsers_to_try = get_candidate_browsers(client_browser)
     result = None
-    if browser:
-        result = await asyncio.to_thread(run_sync, use_cookies=True, browser_name=browser)
-        stdout, stderr = result.stdout, result.stderr
+    last_error_msg = ""
+    
+    for browser in browsers_to_try:
+        print(f"[Info] Пробуем получить информацию с использованием кук браузера: {browser}")
+        res = await asyncio.to_thread(run_sync, use_cookies=True, browser_name=browser)
+        stdout, stderr = res.stdout, res.stderr
         error_msg = stderr.decode('utf-8', errors='replace').strip()
         
-        # Если произошла ошибка доступа к кукам браузера, сбрасываем и пробуем заново без кук
-        if result.returncode != 0 and ("cookie" in error_msg.lower() or "dpapi" in error_msg.lower()):
-            print(f"[Cookies] Ошибка загрузки кук из {browser}: {error_msg}. Повторная попытка без кук...")
-            result = None
-
-    # 2. Если куки не использовались или произошла ошибка их чтения
-    if result is None:
-        result = await asyncio.to_thread(run_sync, use_cookies=False)
-        stdout, stderr = result.stdout, result.stderr
-        
-    if result.returncode != 0:
-        error_msg = stderr.decode('utf-8', errors='replace').strip()
-        if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
-            raise ValueError("Невалидный URL-адрес YouTube.")
-        elif "Video unavailable" in error_msg or "Sign in to confirm" in error_msg:
-            raise ValueError("Видео недоступно (удалено, приватное или требует авторизации/кук).")
+        if res.returncode == 0:
+            result = res
+            break
         else:
-            raise ValueError(f"Ошибка yt-dlp: {error_msg}")
+            last_error_msg = error_msg
+            print(f"[Cookies] Ошибка при использовании браузера {browser}: {error_msg}")
+            # Если ошибка НЕ связана с куками или защитой, прекращаем цикл
+            if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
+                break
+
+    # Если с куками ни один браузер не сработал (или список был пуст), пробуем без кук
+    if result is None:
+        if "Incomplete YouTube ID" in last_error_msg or "is not a valid URL" in last_error_msg:
+            raise ValueError("Невалидный URL-адрес YouTube.")
+            
+        print("[Info] Пробуем получить информацию без использования кук...")
+        res = await asyncio.to_thread(run_sync, use_cookies=False)
+        stdout, stderr = res.stdout, res.stderr
+        if res.returncode == 0:
+            result = res
+        else:
+            error_msg = stderr.decode('utf-8', errors='replace').strip()
+            if "Incomplete YouTube ID" in error_msg or "is not a valid URL" in error_msg:
+                raise ValueError("Невалидный URL-адрес YouTube.")
+            elif "Video unavailable" in error_msg or "Sign in to confirm" in error_msg:
+                raise ValueError("Видео недоступно (удалено, приватное или требует авторизации/кук).")
+            else:
+                raise ValueError(f"Ошибка yt-dlp: {error_msg}")
             
     info = json.loads(stdout.decode('utf-8', errors='replace'))
     
@@ -334,20 +364,20 @@ async def download_video_task(
     def update_task(**kwargs):
         loop.call_soon_threadsafe(lambda: task.update(**kwargs))
 
-    browser = client_browser if client_browser in ["chrome", "edge", "firefox", "brave", "opera", "safari"] else get_active_browser_with_cookies()
+    browsers_to_try = get_candidate_browsers(client_browser)
 
-    def run_sync_download(use_cookies: bool):
+    def run_sync_download(use_cookies: bool, browser_name: str = None):
         startupinfo = None
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
         cmd_args = base_args.copy()
-        if use_cookies and browser:
+        if use_cookies and browser_name:
             # Вставляем --cookies-from-browser после sys.executable -m yt_dlp (индексы 3 и 4)
             cmd_args.insert(3, "--cookies-from-browser")
-            cmd_args.insert(4, browser)
-            print(f"[Download Cookies] Попытка использовать куки браузера: {browser}")
+            cmd_args.insert(4, browser_name)
+            print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
             
         process = subprocess.Popen(
             cmd_args,
@@ -379,14 +409,27 @@ async def download_video_task(
         return returncode, stderr_data
 
     try:
-        use_cookies = bool(browser)
-        returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=use_cookies)
+        returncode = -1
+        stderr_data = b""
         
-        # Если произошла ошибка кукисов, пробуем заново без них
+        # Пробуем каждый браузер с куками по очереди
+        for browser in browsers_to_try:
+            print(f"[Download] Пробуем скачать с использованием кук браузера: {browser}")
+            returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name=browser)
+            if returncode == 0:
+                break
+            else:
+                error_msg = stderr_data.decode('utf-8', errors='replace').strip()
+                print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg}")
+                # Если ошибка вызвана некорректной обрезкой, прекращаем цикл
+                if "crop" in error_msg.lower() or "sections" in error_msg.lower():
+                    break
+                    
+        # Если с куками не вышло, пробуем без кук
         if returncode != 0:
             error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-            if use_cookies and ("cookie" in error_msg.lower() or "dpapi" in error_msg.lower()):
-                print(f"[Download Cookies] Ошибка загрузки кук из {browser}: {error_msg}. Повторная попытка без кук...")
+            if not ("crop" in error_msg.lower() or "sections" in error_msg.lower()):
+                print("[Download] Пробуем скачать без использования кук...")
                 returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=False)
                 
         if returncode != 0:
