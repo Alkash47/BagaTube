@@ -54,9 +54,48 @@ async def cleanup_worker():
         except Exception as e:
             print(f"[Cleanup Worker] Ошибка в работе очистителя: {e}")
 
+def ensure_ffmpeg():
+    import urllib.request
+    import zipfile
+    
+    if getattr(sys, 'frozen', False):
+        target_dir = Path(sys.executable).parent
+    else:
+        target_dir = BASE_DIR
+        
+    ffmpeg_exe = target_dir / "ffmpeg.exe"
+    if ffmpeg_exe.exists():
+        return
+        
+    print("[Setup] ffmpeg не найден. Скачивание (это займет около минуты)...")
+    url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+    zip_path = target_dir / "ffmpeg_temp.zip"
+    
+    try:
+        urllib.request.urlretrieve(url, zip_path)
+        print("[Setup] Извлечение ffmpeg...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file_info in zip_ref.infolist():
+                if file_info.filename.endswith("ffmpeg.exe"):
+                    file_info.filename = "ffmpeg.exe"
+                    zip_ref.extract(file_info, target_dir)
+                elif file_info.filename.endswith("ffprobe.exe"):
+                    file_info.filename = "ffprobe.exe"
+                    zip_ref.extract(file_info, target_dir)
+        print("[Setup] ffmpeg успешно установлен!")
+    except Exception as e:
+        print(f"[Setup] Ошибка при скачивании ffmpeg: {e}")
+    finally:
+        if zip_path.exists():
+            zip_path.unlink()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Запускаем проверку/скачивание ffmpeg в фоновом потоке при старте сервера
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, ensure_ffmpeg)
+    
     await init_db()
     cleanup_task = asyncio.create_task(cleanup_worker())
     yield
@@ -97,41 +136,6 @@ async def read_index():
 static_dir = BASE_DIR / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-def ensure_ffmpeg():
-    import urllib.request
-    import zipfile
-    
-    if getattr(sys, 'frozen', False):
-        target_dir = Path(sys.executable).parent
-    else:
-        target_dir = BASE_DIR
-        
-    ffmpeg_exe = target_dir / "ffmpeg.exe"
-    if ffmpeg_exe.exists():
-        return
-        
-    print("[Setup] ffmpeg не найден. Скачивание (это займет около минуты)...")
-    url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-    zip_path = target_dir / "ffmpeg_temp.zip"
-    
-    try:
-        urllib.request.urlretrieve(url, zip_path)
-        print("[Setup] Извлечение ffmpeg...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            for file_info in zip_ref.infolist():
-                if file_info.filename.endswith("ffmpeg.exe"):
-                    file_info.filename = "ffmpeg.exe"
-                    zip_ref.extract(file_info, target_dir)
-                elif file_info.filename.endswith("ffprobe.exe"):
-                    file_info.filename = "ffprobe.exe"
-                    zip_ref.extract(file_info, target_dir)
-        print("[Setup] ffmpeg успешно установлен!")
-    except Exception as e:
-        print(f"[Setup] Ошибка при скачивании ffmpeg: {e}")
-    finally:
-        if zip_path.exists():
-            zip_path.unlink()
 
 if __name__ == "__main__":
     ensure_ffmpeg()
