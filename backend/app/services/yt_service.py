@@ -460,6 +460,36 @@ async def download_video_task(
                 
         if returncode != 0:
             error_msg = stderr_data.decode('utf-8', errors='replace').strip()
+            
+            # Логируем детальную отладочную информацию в файл
+            debug_info = (
+                f"URL: {url}\n"
+                f"RESOLUTION: {resolution}\n"
+                f"NEED_CROP: {need_crop}\n"
+                f"COOKIES_FILE_EXISTS: {COOKIES_FILE.exists()}\n"
+                f"ERROR: {error_msg}\n"
+            )
+            try:
+                debug_args = [sys.executable, "-m", "yt_dlp", "--list-formats"]
+                if COOKIES_FILE.exists():
+                    debug_args.extend(["--cookies", str(COOKIES_FILE)])
+                else:
+                    debug_args.extend(["--extractor-args", "youtube:player_client=android,ios"])
+                debug_args.append(url)
+                
+                res_debug = subprocess.run(debug_args, capture_output=True, text=True)
+                debug_info += f"\n--- LIST FORMATS OUT ---\n{res_debug.stdout}\n{res_debug.stderr}"
+            except Exception as e:
+                debug_info += f"\nFailed to list formats: {str(e)}"
+                
+            debug_file_path = os.path.join(DOWNLOAD_DIR, "ytdl_debug.txt")
+            try:
+                with open(debug_file_path, "w", encoding="utf-8") as f:
+                    f.write(debug_info)
+                print(f"[Debug] Лог сохранен в {debug_file_path}")
+            except Exception as e:
+                print(f"[Debug] Не удалось сохранить лог: {e}")
+                
             task.update(status="failed", error=f"Ошибка скачивания: {error_msg}")
             return
             

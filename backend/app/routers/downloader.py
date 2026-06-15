@@ -2,15 +2,14 @@ import asyncio
 import os
 import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request, UploadFile, File
-from fastapi.responses import StreamingResponse, FileResponse
-
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from app.schemas.downloader import (
     AnalyzeRequest, AnalyzeResponse, DownloadRequest, DownloadResponse,
     CookieStatusResponse, SaveCookiesRequest
 )
 from app.services.task_manager import task_manager
 from app.services.yt_service import extract_video_info, download_video_task, get_browser_from_ua
-from app.config import COOKIES_FILE
+from app.config import COOKIES_FILE, DOWNLOAD_DIR
 
 router = APIRouter(prefix="/api/downloader", tags=["downloader"])
 
@@ -194,4 +193,17 @@ async def delete_cookies():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Не удалось удалить куки: {str(e)}"
         )
+
+@router.get("/debug")
+async def get_debug_log():
+    debug_file = os.path.join(DOWNLOAD_DIR, "ytdl_debug.txt")
+    if os.path.exists(debug_file):
+        try:
+            with open(debug_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            return HTMLResponse(content=f"<html><body><h2>Лог отладки yt-dlp</h2><pre style='background:#f4f4f4;padding:15px;border:1px solid #ccc;overflow:auto;'>{content}</pre></body></html>")
+        except Exception as e:
+            return HTMLResponse(content=f"<h3>Ошибка чтения лога: {str(e)}</h3>")
+    return HTMLResponse(content="<h3>Файл отладки ytdl_debug.txt не найден. Запустите скачивание видео для генерации лога.</h3>")
+
 
