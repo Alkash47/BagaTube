@@ -17,3 +17,5 @@ sqlalchemy>=2.0.0
 asyncpg>=0.29.0
 aiosqlite>=0.20.0
 curl-cffi
+python-multipart
+
