@@ -36,6 +36,18 @@ def format_seconds_to_time(seconds: int) -> str:
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+def parse_ffmpeg_time(time_str: str) -> float:
+    try:
+        parts = time_str.split(":")
+        if len(parts) == 3:
+            h = float(parts[0])
+            m = float(parts[1])
+            s = float(parts[2])
+            return h * 3600 + m * 60 + s
+    except Exception:
+        pass
+    return 0.0
+
 def setup_ffmpeg_path() -> bool:
     if shutil.which("ffmpeg"):
         return True
@@ -327,6 +339,8 @@ async def download_video_task(
     if not task:
         return
 
+    duration = 0
+
     # Проверка наличия ffmpeg
     if not await check_ffmpeg():
         task.update(status="failed", error="ffmpeg не установлен в системе. Пожалуйста, установите ffmpeg для поддержки слияния и обрезки видео.")
@@ -468,6 +482,32 @@ async def download_video_task(
                         update_task(progress=percent)
                 except Exception:
                     pass
+            # Парсинг прогресса ffmpeg (когда скачиваем секции/обрезаем)
+            elif "time=" in line and ("speed=" in line or "fps=" in line):
+                try:
+                    time_match = re.search(r"time=(?P<time>\d{2}:\d{2}:\d{2}\.\d{2})", line)
+                    if time_match and need_crop and duration > 0:
+                        t_str = time_match.group("time")
+                        current_sec = parse_ffmpeg_time(t_str)
+                        percent = min(99, int((current_sec / duration) * 100))
+                        
+                        speed_match = re.search(r"speed=\s*(?P<speed>[\d.x]+|N/A)", line)
+                        speed = speed_match.group("speed") if speed_match else "N/A"
+                        
+                        # Расчет ETA
+                        eta_val = "--:--"
+                        if speed_match and speed != "N/A" and "x" in speed:
+                            try:
+                                speed_multiplier = float(speed.replace("x", ""))
+                                if speed_multiplier > 0:
+                                    remaining_sec = (duration - current_sec) / speed_multiplier
+                                    eta_val = format_seconds_to_time(int(remaining_sec))
+                            except Exception:
+                                pass
+                                
+                        update_task(progress=percent, speed=f"{speed} (рендер)", eta=eta_val)
+                except Exception as e:
+                    print(f"[Parser Debug] Ошибка парсинга ffmpeg: {e}")
                 
             # Парсинг процесса слияния или конвертации
             elif "[Merger]" in line or "Merging formats into" in line:
