@@ -177,7 +177,7 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             args.extend(["--cookies-from-browser", browser_name])
             print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
             
-        args.extend(["--extractor-args", "youtube:player_client=android,ios"])
+        args.extend(["--extractor-args", "youtube:player_client=mweb,default"])
             
         if shutil.which("node"):
             args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -404,7 +404,7 @@ async def download_video_task(
             print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
             
         cmd_args.insert(3, "--extractor-args")
-        cmd_args.insert(4, "youtube:player_client=android,ios")
+        cmd_args.insert(4, "youtube:player_client=mweb,default")
             
         process = subprocess.Popen(
             cmd_args,
@@ -475,7 +475,7 @@ async def download_video_task(
                 if COOKIES_FILE.exists():
                     debug_args.extend(["--cookies", str(COOKIES_FILE)])
                 else:
-                    debug_args.extend(["--extractor-args", "youtube:player_client=android,ios"])
+                    debug_args.extend(["--extractor-args", "youtube:player_client=mweb,default"])
                 debug_args.append(url)
                 
                 res_debug = subprocess.run(debug_args, capture_output=True, text=True)
