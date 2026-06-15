@@ -206,4 +206,20 @@ async def get_debug_log():
             return HTMLResponse(content=f"<h3>Ошибка чтения лога: {str(e)}</h3>")
     return HTMLResponse(content="<h3>Файл отладки ytdl_debug.txt не найден. Запустите скачивание видео для генерации лога.</h3>")
 
+@router.get("/list_formats")
+async def list_remote_formats(url: str):
+    import subprocess, sys
+    args = [sys.executable, "-m", "yt_dlp", "--list-formats", "--no-warnings"]
+    if COOKIES_FILE.exists():
+        args.extend(["--cookies", str(COOKIES_FILE)])
+    else:
+        args.extend(["--extractor-args", "youtube:player_client=android,ios"])
+    args.append(url)
+    try:
+        res = subprocess.run(args, capture_output=True, text=True)
+        return HTMLResponse(content=f"<html><body><pre>CMD: {' '.join(args)}\n\nSTDOUT:\n{res.stdout}\n\nSTDERR:\n{res.stderr}</pre></body></html>")
+    except Exception as e:
+        return HTMLResponse(content=f"<html><body><h3>Error: {str(e)}</h3></body></html>")
+
+
 
