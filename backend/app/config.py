@@ -1,11 +1,19 @@
 import os
 from pathlib import Path
 
-# Базовая директория проекта
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+import sys
 
-# Папка для временного хранения загрузок
-DOWNLOAD_DIR = BASE_DIR / "downloads"
+if getattr(sys, 'frozen', False):
+    # Приложение запущено как скомпилированный .exe
+    BASE_DIR = Path(sys._MEIPASS)
+    # Загрузки и куки сохраняем рядом с самим .exe файлом (чтобы не потерялись после закрытия)
+    EXE_DIR = Path(sys.executable).parent
+    DOWNLOAD_DIR = EXE_DIR / "downloads"
+else:
+    # Обычный запуск (исходный код)
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    DOWNLOAD_DIR = BASE_DIR / "downloads"
+
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Ограничения безопасности
@@ -20,6 +28,6 @@ SAVE_TO_DATABASE = os.getenv("SAVE_TO_DATABASE", "False").lower() in ("true", "1
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bagatube.db")
 
 # Путь к файлу кук YouTube
-COOKIES_FILE = BASE_DIR / "downloads" / "youtube_cookies.txt"
+COOKIES_FILE = DOWNLOAD_DIR / "youtube_cookies.txt"
 
 

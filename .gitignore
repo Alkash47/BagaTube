@@ -35,3 +35,10 @@ backend/*.mp4
 *.swp
 .gemini/
 scratch/
+
+# PyInstaller and Build Outputs
+backend/build/
+backend/dist/
+backend/BagaTube.spec
+*.exe
+*.zip

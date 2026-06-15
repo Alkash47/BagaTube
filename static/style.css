@@ -18,6 +18,8 @@
     --btn-secondary-hover: #e2e2e2;
     --track-bg: #e2e2e2;
     --slider-bg: #e2e2e2;
+    --input-focus-bg: #ffffff;
+    --input-focus-border: #111111;
 }
 
 body.dark-mode {
@@ -34,6 +36,8 @@ body.dark-mode {
     --btn-secondary-hover: #3d3d3d;
     --track-bg: #2c2c2c;
     --slider-bg: #3d3d3d;
+    --input-focus-bg: #1e1e1e;
+    --input-focus-border: #f5f5f5;
 }
 
 /* Сброс стилей */
@@ -244,9 +248,9 @@ input[type="url"], input[type="text"] {
 }
 
 input[type="url"]:focus, input[type="text"]:focus {
-    border-color: #111111;
-    background-color: #ffffff;
-    box-shadow: 0 0 0 1px #111111;
+    border-color: var(--input-focus-border);
+    background-color: var(--input-focus-bg);
+    box-shadow: 0 0 0 1px var(--input-focus-border);
 }
 
 .input-hint {
@@ -279,9 +283,9 @@ select {
 }
 
 select:focus {
-    border-color: #111111;
-    background-color: #ffffff;
-    box-shadow: 0 0 0 1px #111111;
+    border-color: var(--input-focus-border);
+    background-color: var(--input-focus-bg);
+    box-shadow: 0 0 0 1px var(--input-focus-border);
 }
 
 .select-wrapper::after {

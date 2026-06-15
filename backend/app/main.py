@@ -2,6 +2,14 @@ import asyncio
 import os
 import sys
 import time
+from pathlib import Path
+
+# Обработка вызова yt-dlp внутри скомпилированного .exe
+if len(sys.argv) >= 2 and sys.argv[1] == "--ytdlp-worker":
+    import yt_dlp
+    sys.argv.pop(1)
+    yt_dlp.main()
+    sys.exit(0)
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -31,10 +39,8 @@ async def cleanup_worker():
                 for filename in os.listdir(DOWNLOAD_DIR):
                     file_path = os.path.join(DOWNLOAD_DIR, filename)
                     if os.path.isfile(file_path):
-                        # Не трогаем временные файлы активных загрузок (.part / .ytdl)
                         if file_path.endswith((".part", ".ytdl")):
                             continue
-                        
                         mtime = os.path.getmtime(file_path)
                         if now - mtime > FILE_LIFETIME:
                             try:
@@ -50,14 +56,10 @@ async def cleanup_worker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Создаем папку для загрузок на старте
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    # Инициализируем базу данных (если включена)
     await init_db()
-    # Запускаем фоновый воркер очистки файлов
     cleanup_task = asyncio.create_task(cleanup_worker())
     yield
-    # При остановке приложения отменяем задачу очистки
     cleanup_task.cancel()
     try:
         await cleanup_task
@@ -71,7 +73,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Настройка CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -80,10 +81,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключение роутеров
 app.include_router(downloader.router)
 
-# Раздача фронтенда: главная страница
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
     index_path = BASE_DIR / "static" / "index.html"
@@ -95,7 +94,48 @@ async def read_index():
         status_code=404
     )
 
-# Монтирование статических файлов (css, js, картинки)
 static_dir = BASE_DIR / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+def ensure_ffmpeg():
+    import urllib.request
+    import zipfile
+    
+    if getattr(sys, 'frozen', False):
+        target_dir = Path(sys.executable).parent
+    else:
+        target_dir = BASE_DIR
+        
+    ffmpeg_exe = target_dir / "ffmpeg.exe"
+    if ffmpeg_exe.exists():
+        return
+        
+    print("[Setup] ffmpeg не найден. Скачивание (это займет около минуты)...")
+    url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+    zip_path = target_dir / "ffmpeg_temp.zip"
+    
+    try:
+        urllib.request.urlretrieve(url, zip_path)
+        print("[Setup] Извлечение ffmpeg...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file_info in zip_ref.infolist():
+                if file_info.filename.endswith("ffmpeg.exe"):
+                    file_info.filename = "ffmpeg.exe"
+                    zip_ref.extract(file_info, target_dir)
+                elif file_info.filename.endswith("ffprobe.exe"):
+                    file_info.filename = "ffprobe.exe"
+                    zip_ref.extract(file_info, target_dir)
+        print("[Setup] ffmpeg успешно установлен!")
+    except Exception as e:
+        print(f"[Setup] Ошибка при скачивании ffmpeg: {e}")
+    finally:
+        if zip_path.exists():
+            zip_path.unlink()
+
+if __name__ == "__main__":
+    ensure_ffmpeg()
+    import uvicorn
+    import multiprocessing
+    multiprocessing.freeze_support()
+    uvicorn.run(app, host="127.0.0.1", port=7860)

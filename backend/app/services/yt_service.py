@@ -6,14 +6,17 @@ import shutil
 import subprocess
 import sys
 from typing import Dict, List, Tuple, Optional
-from app.config import DOWNLOAD_DIR, MAX_CROP_DURATION, COOKIES_FILE
+from pathlib import Path
+from app.config import DOWNLOAD_DIR, MAX_CROP_DURATION, COOKIES_FILE, BASE_DIR
 from app.schemas.downloader import VideoFormatInfo, AnalyzeResponse
 from app.services.task_manager import task_manager
 
 # Регулярное выражение для парсинга прогресса yt-dlp
-# Пример: [download]  12.5% of  15.00MiB at  3.20MiB/s ETA 00:04
+# Примеры:
+# [download]  12.5% of  15.00MiB at  3.20MiB/s ETA 00:04
+# [download]  45.3% of ~ 20.10MiB at    1.25MiB/s ETA 00:10 (frag 4/12)
 PROGRESS_RE = re.compile(
-    r"\[download\]\s+(?P<percent>\d+(?:\.\d+)?)%\s+of\s+(?P<size>\S+)\s+at\s+(?P<speed>\S+)\s+ETA\s+(?P<eta>\S+)"
+    r"\[download\]\s+(?P<percent>\d+(?:\.\d+)?)%\s+of\s+(?:~?\s*)(?P<size>[0-9.]+[A-Za-z]+)(?:.*?)at\s+(?:~?\s*)(?P<speed>[0-9.]+[A-Za-z]+/s)(?:.*?)ETA\s+(?P<eta>[\d:]+)"
 )
 
 def parse_time_to_seconds(t_str: str) -> int:
@@ -161,8 +164,8 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
-        args = [
-            sys.executable, "-m", "yt_dlp",
+        ytdlp_cmd = ["--ytdlp-worker"] if getattr(sys, 'frozen', False) else ["-m", "yt_dlp"]
+        args = [sys.executable] + ytdlp_cmd + [
             "--dump-json",
             "--no-warnings",
             "--no-playlist",
@@ -176,8 +179,6 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
         elif use_cookies and browser_name:
             args.extend(["--cookies-from-browser", browser_name])
             print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
-            
-        args.extend(["--extractor-args", "youtube:player_client=mweb,default"])
             
         if shutil.which("node"):
             args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -314,13 +315,15 @@ async def download_video_task(
     outtmpl = os.path.join(DOWNLOAD_DIR, f"{task_id}.%(ext)s")
     
     # Базовые аргументы для yt-dlp
-    base_args = [
-        sys.executable, "-m", "yt_dlp",
+    ytdlp_cmd = ["--ytdlp-worker"] if getattr(sys, 'frozen', False) else ["-m", "yt_dlp"]
+    base_args = [sys.executable] + ytdlp_cmd + [
         "--no-playlist",
         "--no-warnings",
         "--progress",
+        "--newline",
         "--no-check-certificate",
         "--impersonate", "chrome",
+        "-N", "6",  # Безопасное число потоков (16 вызывает блокировку от YouTube)
         "-o", outtmpl,
     ]
     
@@ -376,6 +379,15 @@ async def download_video_task(
     # Добавляем URL
     base_args.append(url)
     
+    # Добавляем путь к ffmpeg, если он скачан
+    if getattr(sys, 'frozen', False):
+        ffmpeg_path = Path(sys.executable).parent / "ffmpeg.exe"
+    else:
+        ffmpeg_path = BASE_DIR / "ffmpeg.exe"
+        
+    if ffmpeg_path.exists():
+        base_args.extend(["--ffmpeg-location", str(ffmpeg_path)])
+    
     # Запуск загрузки
     task.update(status="downloading", progress=0)
     
@@ -403,9 +415,6 @@ async def download_video_task(
             cmd_args.insert(4, browser_name)
             print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
             
-        cmd_args.insert(3, "--extractor-args")
-        cmd_args.insert(4, "youtube:player_client=mweb,default")
-            
         process = subprocess.Popen(
             cmd_args,
             stdout=subprocess.PIPE,
@@ -420,10 +429,21 @@ async def download_video_task(
             # Парсинг прогресса скачивания
             match = PROGRESS_RE.search(line)
             if match:
-                percent = int(float(match.group("percent")))
-                speed = match.group("speed")
-                eta = match.group("eta")
-                update_task(progress=percent, speed=speed, eta=eta)
+                try:
+                    percent = int(float(match.group("percent")))
+                    speed = match.group("speed")
+                    eta = match.group("eta")
+                    update_task(progress=percent, speed=speed, eta=eta)
+                except Exception:
+                    pass
+            elif "[download]" in line and "%" in line:
+                try:
+                    perc_str = re.search(r"(\d+(?:\.\d+)?)%", line)
+                    if perc_str:
+                        percent = int(float(perc_str.group(1)))
+                        update_task(progress=percent)
+                except Exception:
+                    pass
                 
             # Парсинг процесса слияния или конвертации
             elif "[Merger]" in line or "Merging formats into" in line:
@@ -471,11 +491,10 @@ async def download_video_task(
                 f"ERROR: {error_msg}\n"
             )
             try:
-                debug_args = [sys.executable, "-m", "yt_dlp", "--list-formats"]
+                ytdlp_cmd = ["--ytdlp-worker"] if getattr(sys, 'frozen', False) else ["-m", "yt_dlp"]
+                debug_args = [sys.executable] + ytdlp_cmd + ["--list-formats"]
                 if COOKIES_FILE.exists():
                     debug_args.extend(["--cookies", str(COOKIES_FILE)])
-                else:
-                    debug_args.extend(["--extractor-args", "youtube:player_client=mweb,default"])
                 debug_args.append(url)
                 
                 res_debug = subprocess.run(debug_args, capture_output=True, text=True)
