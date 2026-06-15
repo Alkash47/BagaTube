@@ -460,5 +460,15 @@ async def download_video_task(
             filename=download_filename
         )
         
+        # Сохранение лога в базу данных (если включено)
+        from app.database import save_download_record
+        await save_download_record(
+            task_id=task_id,
+            url=url,
+            title=download_filename,
+            resolution=resolution,
+            file_path=file_path
+        )
+        
     except Exception as e:
         task.update(status="failed", error=f"Внутренняя ошибка: {str(e)}")

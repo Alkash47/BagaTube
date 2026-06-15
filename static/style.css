@@ -1,22 +1,39 @@
-/* Основные CSS-переменные для дизайн-системы (Лаймово-Черная тема) */
+/* Pinterest-Inspired Minimalist Design System */
 :root {
-    --bg-color: #050609;
-    --card-bg: rgba(12, 14, 20, 0.85);
-    --card-border: rgba(163, 230, 53, 0.15);
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --accent-purple: #a3e635; /* Будет лаймовым */
-    --accent-indigo: #bef264; /* Светло-лаймовый */
-    --accent-blue: #10b981;   /* Изумрудный */
-    --accent-gradient: linear-gradient(135deg, #a3e635 0%, #10b981 100%);
-    --hover-gradient: linear-gradient(135deg, #bef264 0%, #34d399 100%);
-    --glow-shadow: 0 0 25px rgba(163, 230, 53, 0.35);
-    --error-red: #ef4444;
-    --success-green: #a3e635;
-    --input-bg: rgba(8, 10, 15, 0.75);
+    --bg-color: #f7f7f7;
+    --card-bg: #ffffff;
+    --card-border: #e9e9e9;
+    --text-primary: #111111;
+    --text-secondary: #5f5f5f;
+    --accent-red: #e60023; /* Фирменный красный Pinterest */
+    --accent-red-hover: #ad001b;
+    --error-red: #e60023;
+    --success-green: #25a764;
+    --input-bg: #efefef;
     --font-sans: 'Inter', sans-serif;
-    --font-display: 'Outfit', sans-serif;
-    --transition-speed: 0.3s;
+    --font-display: 'Oswald', sans-serif;
+    --transition-speed: 0.25s;
+    --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.02);
+    --dot-glow-color: rgba(230, 0, 35, 0.12);
+    --btn-secondary-hover: #e2e2e2;
+    --track-bg: #e2e2e2;
+    --slider-bg: #e2e2e2;
+}
+
+body.dark-mode {
+    --bg-color: #111111;
+    --card-bg: #1e1e1e;
+    --card-border: #2c2c2c;
+    --text-primary: #f5f5f5;
+    --text-secondary: #8d8d8d;
+    --accent-red: #e60023;
+    --accent-red-hover: #ff1a3c;
+    --input-bg: #2c2c2c;
+    --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+    --dot-glow-color: rgba(230, 0, 35, 0.22);
+    --btn-secondary-hover: #3d3d3d;
+    --track-bg: #2c2c2c;
+    --slider-bg: #3d3d3d;
 }
 
 /* Сброс стилей */
@@ -38,50 +55,95 @@ body {
     position: relative;
 }
 
-/* Декоративные светящиеся сферы */
-.glow-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(130px);
+/* Стили для фона DotField */
+.dot-field-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     z-index: -1;
-    opacity: 0.45;
     pointer-events: none;
-    animation: pulseOrbs 8s ease-in-out infinite alternate;
 }
 
-.orb-1 {
-    width: 350px;
-    height: 350px;
-    background: var(--accent-purple);
-    top: 15%;
-    left: 10%;
+#dot-field-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
 }
 
-.orb-2 {
-    width: 400px;
-    height: 400px;
-    background: var(--accent-blue);
-    bottom: 15%;
-    right: 5%;
-}
-
-@keyframes pulseOrbs {
-    0% {
-        transform: translate(0, 0) scale(1);
-    }
-    100% {
-        transform: translate(30px, -20px) scale(1.1);
-    }
+#dot-field-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
 
 /* Контейнер приложения */
 .app-container {
     width: 100%;
-    max-width: 680px;
+    max-width: 650px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 24px;
+    z-index: 1;
+}
+
+/* Кнопка переключения темы */
+.theme-toggle-btn {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.15rem;
+    box-shadow: var(--shadow-soft);
+    z-index: 100;
+    transition: all var(--transition-speed);
+    outline: none;
+}
+
+.theme-toggle-btn:hover {
+    transform: scale(1.08);
+    background-color: var(--input-bg);
+}
+
+.theme-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+/* Переопределения для инпутов при фокусе в темной теме */
+body.dark-mode input[type="url"]:focus,
+body.dark-mode input[type="text"]:focus,
+body.dark-mode select:focus {
+    border-color: #f5f5f5;
+    box-shadow: 0 0 0 1px #f5f5f5;
+}
+
+/* Иконки в кнопке темной темы */
+.theme-toggle-btn .moon-icon {
+    display: block;
+}
+.theme-toggle-btn .sun-icon {
+    display: none;
+    color: #f59e0b; /* Золотой цвет для солнца */
+}
+
+body.dark-mode .theme-toggle-btn .moon-icon {
+    display: none;
+}
+body.dark-mode .theme-toggle-btn .sun-icon {
+    display: block;
 }
 
 /* Шапка */
@@ -92,61 +154,44 @@ body {
 .logo {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     margin-bottom: 8px;
 }
 
 .logo-icon {
-    font-size: 2.5rem;
-    background: var(--accent-gradient);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 2px 8px rgba(139, 92, 246, 0.4));
+    font-size: 2.2rem;
+    color: var(--accent-red);
 }
 
 .logo-text {
     font-family: var(--font-display);
-    font-size: 2.8rem;
+    font-size: 2.4rem;
     font-weight: 800;
     letter-spacing: -0.05em;
+    color: var(--text-primary);
 }
 
 .accent-text {
-    background: var(--accent-gradient);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--accent-red);
 }
 
 .subtitle {
     color: var(--text-secondary);
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 400;
 }
 
-/* Главная Glassmorphic карточка */
+/* Минималистичная белая карточка */
 .main-card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border-radius: 24px;
+    border-radius: 28px;
     padding: 32px;
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3), 0 5px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-soft);
     display: flex;
     flex-direction: column;
     gap: 28px;
     position: relative;
-    overflow: hidden;
-}
-
-.main-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
 }
 
 /* Разделы карточки */
@@ -164,8 +209,8 @@ body {
 }
 
 .input-label {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.8rem;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-secondary);
@@ -181,27 +226,27 @@ body {
     position: absolute;
     left: 16px;
     color: var(--text-secondary);
-    font-size: 1.1rem;
+    font-size: 1rem;
     pointer-events: none;
 }
 
 input[type="url"], input[type="text"] {
     width: 100%;
     background-color: var(--input-bg);
-    border: 1.5px solid var(--card-border);
-    border-radius: 12px;
-    padding: 14px 16px 14px 46px;
+    border: 1.5px solid transparent;
+    border-radius: 16px;
+    padding: 14px 16px 14px 44px;
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 1rem;
+    font-size: 0.95rem;
     outline: none;
     transition: all var(--transition-speed);
 }
 
 input[type="url"]:focus, input[type="text"]:focus {
-    border-color: var(--accent-indigo);
-    box-shadow: 0 0 12px rgba(163, 230, 53, 0.25);
-    background-color: rgba(6, 7, 10, 0.95);
+    border-color: #111111;
+    background-color: #ffffff;
+    box-shadow: 0 0 0 1px #111111;
 }
 
 .input-hint {
@@ -220,12 +265,12 @@ input[type="url"]:focus, input[type="text"]:focus {
 select {
     width: 100%;
     background-color: var(--input-bg);
-    border: 1.5px solid var(--card-border);
-    border-radius: 12px;
-    padding: 14px 40px 14px 46px;
+    border: 1.5px solid transparent;
+    border-radius: 16px;
+    padding: 14px 40px 14px 44px;
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 1rem;
+    font-size: 0.95rem;
     outline: none;
     cursor: pointer;
     appearance: none;
@@ -234,8 +279,9 @@ select {
 }
 
 select:focus {
-    border-color: var(--accent-indigo);
-    box-shadow: 0 0 12px rgba(163, 230, 53, 0.25);
+    border-color: #111111;
+    background-color: #ffffff;
+    box-shadow: 0 0 0 1px #111111;
 }
 
 .select-wrapper::after {
@@ -248,19 +294,19 @@ select:focus {
     pointer-events: none;
 }
 
-/* Кнопки */
+/* Овальные ("Pill") кнопки в стиле Pinterest */
 .btn {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     border: none;
-    border-radius: 12px;
-    padding: 14px 24px;
+    border-radius: 999px; /* Овальные скругления */
+    padding: 14px 28px;
     color: #ffffff;
     font-family: var(--font-sans);
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 0.95rem;
+    font-weight: 700;
     cursor: pointer;
     transition: all var(--transition-speed);
     position: relative;
@@ -268,54 +314,50 @@ select:focus {
 }
 
 .btn-primary {
-    background: var(--accent-gradient);
-    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.25);
+    background-color: var(--accent-red);
 }
 
 .btn-primary:hover {
-    background: var(--hover-gradient);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+    background-color: var(--accent-red-hover);
+    transform: scale(1.02);
 }
 
 .btn-accent {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25);
+    background-color: var(--accent-red);
 }
 
 .btn-accent:hover {
-    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+    background-color: var(--accent-red-hover);
+    transform: scale(1.02);
 }
 
 .btn-secondary {
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid var(--card-border);
+    background-color: var(--input-bg);
     color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.15);
+    background-color: var(--btn-secondary-hover);
+    transform: scale(1.02);
 }
 
 .btn-large {
     padding: 16px 32px;
-    font-size: 1.05rem;
+    font-size: 1rem;
 }
 
 .btn-small {
-    padding: 10px 18px;
-    font-size: 0.9rem;
+    padding: 10px 20px;
+    font-size: 0.85rem;
     align-self: center;
 }
 
 .btn:active {
-    transform: translateY(1px);
+    transform: scale(0.98);
 }
 
 .btn-icon {
-    font-size: 1rem;
+    font-size: 0.95rem;
 }
 
 .spinner {
@@ -327,12 +369,13 @@ select:focus {
     display: flex;
     align-items: center;
     gap: 12px;
-    background-color: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 12px;
+    background-color: rgba(230, 0, 35, 0.08);
+    border: 1px solid rgba(230, 0, 35, 0.15);
+    border-radius: 16px;
     padding: 12px 16px;
-    color: #fca5a5;
+    color: var(--accent-red);
     font-size: 0.9rem;
+    font-weight: 500;
 }
 
 .error-icon {
@@ -344,18 +387,16 @@ select:focus {
     display: flex;
     gap: 20px;
     align-items: center;
-    background-color: rgba(10, 12, 22, 0.35);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
+    background-color: var(--bg-color);
+    border-radius: 20px;
     padding: 16px;
 }
 
 #video-thumbnail {
-    width: 160px;
+    width: 150px;
     aspect-ratio: 16/9;
     object-fit: cover;
-    border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
 }
 
 .video-info {
@@ -363,13 +404,14 @@ select:focus {
     flex-direction: column;
     gap: 6px;
     flex: 1;
-    min-width: 0; /* Решает проблему переполнения текста */
+    min-width: 0;
 }
 
 #video-title {
-    font-size: 1.15rem;
-    font-weight: 600;
-    line-height: 1.4;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -377,7 +419,8 @@ select:focus {
 
 .channel-name {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 500;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -387,12 +430,13 @@ select:focus {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--input-bg);
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 0.8rem;
     width: fit-content;
-    color: var(--text-secondary);
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .icon-sm {
@@ -410,7 +454,7 @@ select:focus {
     gap: 20px;
 }
 
-/* Стилизация Чекбокса / Свитча */
+/* Чекбокс / Свитч */
 .checkbox-container {
     display: flex;
     align-items: center;
@@ -440,27 +484,25 @@ select:focus {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--card-border);
-    transition: .4s;
+    background-color: var(--slider-bg);
+    transition: .3s;
     border-radius: 24px;
 }
 
 .slider:before {
     position: absolute;
     content: "";
-    height: 16px;
-    width: 16px;
+    height: 18px;
+    width: 18px;
     left: 3px;
     bottom: 3px;
-    background-color: var(--text-primary);
-    transition: .4s;
+    background-color: #ffffff;
+    transition: .3s;
     border-radius: 50%;
 }
 
 .toggle-switch input:checked + .slider {
-    background: var(--accent-gradient);
-    border-color: transparent;
+    background-color: var(--accent-red);
 }
 
 .toggle-switch input:checked + .slider:before {
@@ -468,8 +510,8 @@ select:focus {
 }
 
 .checkbox-label {
-    font-size: 0.95rem;
-    font-weight: 500;
+    font-size: 0.9rem;
+    font-weight: 600;
     color: var(--text-primary);
 }
 
@@ -504,47 +546,45 @@ select:focus {
 
 #status-title {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 700;
 }
 
 .status-spinner-icon {
-    font-size: 1.25rem;
-    color: var(--accent-blue);
+    font-size: 1.2rem;
+    color: var(--accent-red);
 }
 
 .progress-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    background-color: rgba(10, 12, 22, 0.3);
-    border: 1px solid var(--card-border);
-    border-radius: 12px;
+    background-color: var(--bg-color);
+    border-radius: 16px;
     padding: 16px;
 }
 
 .progress-bar-track {
     width: 100%;
-    height: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 5px;
+    height: 8px;
+    background-color: var(--track-bg);
+    border-radius: 4px;
     overflow: hidden;
 }
 
 .progress-bar-fill {
     height: 100%;
-    background: var(--accent-gradient);
-    border-radius: 5px;
-    box-shadow: 0 0 10px rgba(163, 230, 53, 0.5);
+    background-color: var(--accent-red);
+    border-radius: 4px;
     transition: width 0.3s ease-out;
 }
 
 .progress-stats {
     display: flex;
     justify-content: space-between;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    font-weight: 500;
+    font-weight: 600;
 }
 
 #progress-percent {
@@ -554,8 +594,9 @@ select:focus {
 
 .status-message {
     text-align: center;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--text-secondary);
+    font-weight: 500;
     padding: 8px 0;
 }
 
@@ -569,10 +610,9 @@ select:focus {
 }
 
 .success-icon-wrapper {
-    width: 72px;
-    height: 72px;
-    background-color: rgba(16, 185, 129, 0.15);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    width: 64px;
+    height: 64px;
+    background-color: rgba(37, 167, 100, 0.1);
     border-radius: 50%;
     display: flex;
     justify-content: center;
@@ -580,10 +620,9 @@ select:focus {
 }
 
 .success-check-icon {
-    font-size: 2.2rem;
+    font-size: 2rem;
     color: var(--success-green);
-    filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.4));
-    animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes scaleIn {
@@ -593,8 +632,8 @@ select:focus {
 
 .success-subtitle {
     color: var(--text-secondary);
-    font-size: 0.95rem;
-    line-height: 1.5;
+    font-size: 0.9rem;
+    line-height: 1.45;
     max-width: 420px;
 }
 
@@ -607,8 +646,9 @@ select:focus {
 /* Подвал */
 .app-footer {
     text-align: center;
-    color: rgba(255, 255, 255, 0.2);
-    font-size: 0.8rem;
+    color: #b5b5b5;
+    font-size: 0.75rem;
+    font-weight: 500;
 }
 
 /* Вспомогательные классы скрытия/показа */
@@ -617,7 +657,7 @@ select:focus {
 }
 
 .fade-in {
-    animation: fadeIn 0.4s ease-out;
+    animation: fadeIn 0.35s ease-out;
 }
 
 @keyframes fadeIn {
@@ -634,13 +674,14 @@ select:focus {
 /* Адаптивность для мобильных */
 @media (max-width: 580px) {
     .main-card {
-        padding: 20px;
+        padding: 24px 20px;
         gap: 20px;
     }
     
     .video-preview-card {
         flex-direction: column;
         align-items: stretch;
+        gap: 12px;
     }
     
     #video-thumbnail {
@@ -658,6 +699,6 @@ select:focus {
     }
     
     .logo-text {
-        font-size: 2.2rem;
+        font-size: 2rem;
     }
 }

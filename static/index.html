@@ -8,7 +8,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&family=Oswald:wght@700&display=swap" rel="stylesheet">
     
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -17,9 +17,25 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- Фоновые светящиеся сферы для глубины -->
-    <div class="glow-orb orb-1"></div>
-    <div class="glow-orb orb-2"></div>
+    <!-- Кнопка переключения темы -->
+    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Переключить тему">
+        <i class="fa-solid fa-moon moon-icon"></i>
+        <i class="fa-solid fa-sun sun-icon hidden"></i>
+    </button>
+
+    <!-- Фоновый интерактивный холст DotField -->
+    <div id="dot-field-container" class="dot-field-container">
+        <canvas id="dot-field-canvas"></canvas>
+        <svg id="dot-field-svg">
+            <defs>
+                <radialGradient id="dot-field-glow-grad">
+                    <stop offset="0%" stop-color="var(--dot-glow-color)" />
+                    <stop offset="100%" stop-color="transparent" />
+                </radialGradient>
+            </defs>
+            <circle id="dot-field-glow" cx="-9999" cy="-9999" r="160" fill="url(#dot-field-glow-grad)" style="opacity: 0; will-change: opacity;"></circle>
+        </svg>
+    </div>
 
     <div class="app-container">
         <!-- Шапка -->

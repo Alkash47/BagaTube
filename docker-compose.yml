@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  bagatube:
+    build: .
+    container_name: bagatube-app
+    ports:
+      - "80:8000"  # Пробрасываем стандартный порт 80 (HTTP) на порт 8000 в контейнере
+    volumes:
+      - bagatube-downloads:/app/downloads
+    environment:
+      - SAVE_TO_DATABASE=False  # По умолчанию выключено. Установите True для включения БД.
+      # - DATABASE_URL=postgresql+asyncpg://user:password@host/db # Пример для подключения Postgres
+    restart: always
+
+volumes:
+  bagatube-downloads:

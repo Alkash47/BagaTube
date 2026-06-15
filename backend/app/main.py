@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse
 
 from app.config import CORS_ORIGINS, DOWNLOAD_DIR, FILE_LIFETIME, BASE_DIR
 from app.routers import downloader
+from app.database import init_db
 
 async def cleanup_worker():
     """
@@ -51,6 +52,8 @@ async def cleanup_worker():
 async def lifespan(app: FastAPI):
     # Создаем папку для загрузок на старте
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Инициализируем базу данных (если включена)
+    await init_db()
     # Запускаем фоновый воркер очистки файлов
     cleanup_task = asyncio.create_task(cleanup_worker())
     yield
