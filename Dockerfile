@@ -23,11 +23,11 @@ COPY static ./static
 RUN mkdir -p downloads && chmod 777 downloads
 
 # Настройка переменных окружения
-ENV PORT=8000
+ENV PORT=7860
 ENV PYTHONPATH=/app/backend
 
-# Открытие порта 8000
-EXPOSE 8000
+# Открытие порта 7860
+EXPOSE 7860
 
 # Запуск приложения через uvicorn
-CMD uvicorn app.main:app --host 0.0.0.0 --port 8000
+CMD uvicorn app.main:app --host 0.0.0.0 --port 7860
