@@ -170,14 +170,14 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             "--impersonate", "chrome",
         ]
         
-        if COOKIES_FILE.exists():
+        if use_cookies and COOKIES_FILE.exists():
             args.extend(["--cookies", str(COOKIES_FILE)])
             print(f"[Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
-        else:
-            args.extend(["--extractor-args", "youtube:player_client=android,ios"])
-            if use_cookies and browser_name:
-                args.extend(["--cookies-from-browser", browser_name])
-                print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
+        elif use_cookies and browser_name:
+            args.extend(["--cookies-from-browser", browser_name])
+            print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
+            
+        args.extend(["--extractor-args", "youtube:player_client=android,ios"])
             
         if shutil.which("node"):
             args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -324,9 +324,6 @@ async def download_video_task(
         "-o", outtmpl,
     ]
     
-    if not COOKIES_FILE.exists():
-        base_args.extend(["--extractor-args", "youtube:player_client=android,ios"])
-    
     # Автоматический выбор JS-рантайма
     if shutil.which("node"):
         base_args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -396,7 +393,7 @@ async def download_video_task(
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
         cmd_args = base_args.copy()
-        if COOKIES_FILE.exists():
+        if use_cookies and COOKIES_FILE.exists():
             cmd_args.insert(3, "--cookies")
             cmd_args.insert(4, str(COOKIES_FILE))
             print(f"[Download Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
@@ -405,6 +402,9 @@ async def download_video_task(
             cmd_args.insert(3, "--cookies-from-browser")
             cmd_args.insert(4, browser_name)
             print(f"[Download Cookies] Попытка использовать куки браузера: {browser_name}")
+            
+        cmd_args.insert(3, "--extractor-args")
+        cmd_args.insert(4, "youtube:player_client=android,ios")
             
         process = subprocess.Popen(
             cmd_args,
