@@ -168,15 +168,16 @@ async def extract_video_info(url: str, client_browser: str = None) -> AnalyzeRes
             "--no-playlist",
             "--no-check-certificate",
             "--impersonate", "chrome",
-            "--extractor-args", "youtube:player_client=android,ios"
         ]
         
         if COOKIES_FILE.exists():
             args.extend(["--cookies", str(COOKIES_FILE)])
             print(f"[Cookies] Использование загруженного файла кук: {COOKIES_FILE}")
-        elif use_cookies and browser_name:
-            args.extend(["--cookies-from-browser", browser_name])
-            print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
+        else:
+            args.extend(["--extractor-args", "youtube:player_client=android,ios"])
+            if use_cookies and browser_name:
+                args.extend(["--cookies-from-browser", browser_name])
+                print(f"[Cookies] Попытка использовать куки браузера: {browser_name}")
             
         if shutil.which("node"):
             args.extend(["--js-runtimes", "node", "--remote-components", "ejs:github"])
@@ -320,9 +321,11 @@ async def download_video_task(
         "--progress",
         "--no-check-certificate",
         "--impersonate", "chrome",
-        "--extractor-args", "youtube:player_client=android,ios",
         "-o", outtmpl,
     ]
+    
+    if not COOKIES_FILE.exists():
+        base_args.extend(["--extractor-args", "youtube:player_client=android,ios"])
     
     # Автоматический выбор JS-рантайма
     if shutil.which("node"):
@@ -341,7 +344,7 @@ async def download_video_task(
         # resolution вида "1080p", "720p" и т.д.
         try:
             height = int(resolution.replace("p", ""))
-            format_str = f"bestvideo[height<={height}]+bestaudio/best"
+            format_str = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
         except ValueError:
             format_str = "best/best"
             
