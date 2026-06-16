@@ -36,6 +36,17 @@ def safe_print(*args, **kwargs):
         except Exception:
             pass
 
+def clean_error_summary(error_msg: str) -> str:
+    if not error_msg:
+        return "Unknown error"
+    # Ищем строчку с ERROR:
+    for line in error_msg.split('\n'):
+        if "ERROR:" in line:
+            return line.strip()
+    # Если нет, возвращаем последнюю непустую строку
+    lines = [l.strip() for l in error_msg.split('\n') if l.strip()]
+    return lines[-1] if lines else "Unknown error"
+
 def parse_time_to_seconds(t_str: str) -> int:
     parts = t_str.strip().split(':')
     if len(parts) == 1:
@@ -548,7 +559,7 @@ async def download_video_task(
                 result_found = True
             else:
                 error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-                safe_print(f"[Download] Ошибка при скачивании с загруженными куками: {error_msg!r}")
+                safe_print(f"[Download] Ошибка при скачивании с загруженными куками: {clean_error_summary(error_msg)}")
         
         # 2. Если файл кук не сработал, пробуем каждый браузер по очереди
         if not result_found:
@@ -560,7 +571,7 @@ async def download_video_task(
                     break
                 else:
                     error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-                    safe_print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg!r}")
+                    safe_print(f"[Download] Ошибка при скачивании с куками {browser}: {clean_error_summary(error_msg)}")
                     # Если ошибка вызвана некорректной обрезкой, прекращаем цикл
                     if "crop" in error_msg.lower() or "sections" in error_msg.lower():
                         break
