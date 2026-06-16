@@ -19,6 +19,23 @@ PROGRESS_RE = re.compile(
     r"\[download\]\s+(?P<percent>\d+(?:\.\d+)?)%\s+of\s+(?:~?\s*)(?P<size>[0-9.]+[A-Za-z]+)(?:.*?)at\s+(?:~?\s*)(?P<speed>[0-9.]+[A-Za-z]+/s)(?:.*?)ETA\s+(?P<eta>[\d:]+)"
 )
 
+def safe_print(*args, **kwargs):
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        import sys
+        encoding = sys.stdout.encoding or 'utf-8'
+        new_args = []
+        for arg in args:
+            if isinstance(arg, str):
+                new_args.append(arg.encode(encoding, errors='replace').decode(encoding))
+            else:
+                new_args.append(arg)
+        try:
+            print(*new_args, **kwargs)
+        except Exception:
+            pass
+
 def parse_time_to_seconds(t_str: str) -> int:
     parts = t_str.strip().split(':')
     if len(parts) == 1:
@@ -347,7 +364,10 @@ async def download_video_task(
         return
 
     # Подготовка путей
-    outtmpl = os.path.join(DOWNLOAD_DIR, f"{task_id}.%(ext)s")
+    if need_crop and crop_start and crop_end:
+        outtmpl = os.path.join(DOWNLOAD_DIR, f"{task_id}_full.%(ext)s")
+    else:
+        outtmpl = os.path.join(DOWNLOAD_DIR, f"{task_id}.%(ext)s")
     
     # Базовые аргументы для yt-dlp
     ytdlp_cmd = ["--ytdlp-worker"] if getattr(sys, 'frozen', False) else ["-m", "yt_dlp"]
@@ -389,7 +409,7 @@ async def download_video_task(
             "--merge-output-format", "mp4"
         ])
 
-    # Настройка обрезки
+    # Настройка обрезки (валидация параметров, обрезка будет произведена после скачивания)
     if need_crop and crop_start and crop_end:
         try:
             start_sec = parse_time_to_seconds(crop_start)
@@ -402,11 +422,6 @@ async def download_video_task(
             if duration > MAX_CROP_DURATION:
                 task.update(status="failed", error=f"Превышена максимальная длительность обрезки ({MAX_CROP_DURATION // 60} мин).")
                 return
-                
-            base_args.extend([
-                "--download-sections", f"*{crop_start}-{crop_end}",
-                "--force-keyframes-at-cuts"
-            ])
         except ValueError as e:
             task.update(status="failed", error=str(e))
             return
@@ -527,25 +542,25 @@ async def download_video_task(
         
         # 1. Пробуем сначала загруженный файл кук
         if COOKIES_FILE.exists():
-            print(f"[Download] Пробуем скачать с использованием загруженного файла кук...")
+            safe_print(f"[Download] Пробуем скачать с использованием загруженного файла кук...")
             returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name="custom_file")
             if returncode == 0:
                 result_found = True
             else:
                 error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-                print(f"[Download] Ошибка при скачивании с загруженными куками: {error_msg}")
+                safe_print(f"[Download] Ошибка при скачивании с загруженными куками: {error_msg!r}")
         
         # 2. Если файл кук не сработал, пробуем каждый браузер по очереди
         if not result_found:
             for browser in browsers_to_try:
-                print(f"[Download] Пробуем скачать с использованием кук браузера: {browser}")
+                safe_print(f"[Download] Пробуем скачать с использованием кук браузера: {browser}")
                 returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=True, browser_name=browser)
                 if returncode == 0:
                     result_found = True
                     break
                 else:
                     error_msg = stderr_data.decode('utf-8', errors='replace').strip()
-                    print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg}")
+                    safe_print(f"[Download] Ошибка при скачивании с куками {browser}: {error_msg!r}")
                     # Если ошибка вызвана некорректной обрезкой, прекращаем цикл
                     if "crop" in error_msg.lower() or "sections" in error_msg.lower():
                         break
@@ -554,7 +569,7 @@ async def download_video_task(
         if not result_found:
             error_msg = stderr_data.decode('utf-8', errors='replace').strip()
             if not ("crop" in error_msg.lower() or "sections" in error_msg.lower()):
-                print("[Download] Пробуем скачать без использования кук...")
+                safe_print("[Download] Пробуем скачать без использования кук...")
                 returncode, stderr_data = await asyncio.to_thread(run_sync_download, use_cookies=False)
                 
         if returncode != 0:
@@ -584,23 +599,98 @@ async def download_video_task(
             try:
                 with open(debug_file_path, "w", encoding="utf-8") as f:
                     f.write(debug_info)
-                print(f"[Debug] Лог сохранен в {debug_file_path}")
+                safe_print(f"[Debug] Лог сохранен в {debug_file_path}")
             except Exception as e:
-                print(f"[Debug] Не удалось сохранить лог: {e}")
+                safe_print(f"[Debug] Не удалось сохранить лог: {e}")
                 
             task.update(status="failed", error=f"Ошибка скачивания: {error_msg}")
             return
             
-        # Поиск финального файла на диске
+        # Поиск финального или временного файла на диске
         import glob
-        final_files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{task_id}.*")) if not f.endswith((".part", ".ytdl"))]
-        
-        if not final_files:
-            task.update(status="failed", error="Файл не был создан.")
-            return
+        if need_crop and crop_start and crop_end:
+            full_files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{task_id}_full.*")) if not f.endswith((".part", ".ytdl"))]
+            if not full_files:
+                task.update(status="failed", error="Файл для обрезки не был создан.")
+                return
             
-        file_path = final_files[0]
-        ext = os.path.splitext(file_path)[1]
+            full_file_path = full_files[0]
+            ext = os.path.splitext(full_file_path)[1]
+            final_file_path = os.path.join(DOWNLOAD_DIR, f"{task_id}{ext}")
+            
+            # Вырезаем фрагмент с помощью ffmpeg
+            update_task(status="processing", progress=95, speed="N/A", eta="Cropping...")
+            
+            ffmpeg_exe = str(ffmpeg_path) if ffmpeg_path.exists() else "ffmpeg"
+            # Быстрое позиционирование -ss до -i
+            ffmpeg_cmd = [
+                ffmpeg_exe,
+                "-y",
+                "-ss", crop_start,
+                "-to", crop_end,
+                "-i", full_file_path,
+                "-c", "copy",
+                final_file_path
+            ]
+            
+            safe_print(f"[FFmpeg Crop] Запуск команды: {' '.join(ffmpeg_cmd)}")
+            
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+            def run_ffmpeg(cmd):
+                return subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    startupinfo=startupinfo
+                )
+            
+            crop_res = await asyncio.to_thread(run_ffmpeg, ffmpeg_cmd)
+            stdout_crop, stderr_crop = crop_res.stdout, crop_res.stderr
+            
+            if crop_res.returncode != 0:
+                error_crop = stderr_crop.decode('utf-8', errors='replace').strip()
+                safe_print(f"[FFmpeg Crop] Ошибка быстрого копирования: {error_crop!r}. Пробуем с перекодированием...")
+                
+                ffmpeg_cmd_re = [
+                    ffmpeg_exe,
+                    "-y",
+                    "-ss", crop_start,
+                    "-to", crop_end,
+                    "-i", full_file_path,
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    final_file_path
+                ]
+                crop_res_re = await asyncio.to_thread(run_ffmpeg, ffmpeg_cmd_re)
+                stdout_crop, stderr_crop = crop_res_re.stdout, crop_res_re.stderr
+                if crop_res_re.returncode != 0:
+                    error_crop = stderr_crop.decode('utf-8', errors='replace').strip()
+                    task.update(status="failed", error=f"Ошибка обрезки ffmpeg: {error_crop}")
+                    try:
+                        os.remove(full_file_path)
+                    except:
+                        pass
+                    return
+            
+            # Удаляем временный файл полного видео
+            try:
+                os.remove(full_file_path)
+                safe_print(f"[FFmpeg Crop] Временный файл успешно удален: {full_file_path}")
+            except Exception as e:
+                safe_print(f"[FFmpeg Crop] Ошибка при удалении временного файла: {e}")
+                
+            file_path = final_file_path
+        else:
+            final_files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{task_id}.*")) if not f.endswith((".part", ".ytdl"))]
+            if not final_files:
+                task.update(status="failed", error="Файл не был создан.")
+                return
+            file_path = final_files[0]
+            ext = os.path.splitext(file_path)[1]
         
         # Получаем оригинальное имя видео (для переименования при скачивании)
         # Получим его асинхронно
@@ -625,4 +715,7 @@ async def download_video_task(
         )
         
     except Exception as e:
+        import traceback
+        tb_str = traceback.format_exc()
+        safe_print(f"[Download Task Error] Traceback:\n{tb_str}")
         task.update(status="failed", error=f"Внутренняя ошибка: {str(e)}")
